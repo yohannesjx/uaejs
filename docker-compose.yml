@@ -202,3 +202,26 @@ services:
       - "3000:3000"
     volumes:
       - ./admin-dashboard:/app/admin-dashboard
+
+  # ---------------------------------------------------------------------------
+  # SvelteKit storefront (production image: adapter-node, multi-stage Dockerfile)
+  # ---------------------------------------------------------------------------
+  storefront:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        PUBLIC_API_BASE_URL: ${PUBLIC_API_BASE_URL:-}
+        PUBLIC_API_PORT: ${PUBLIC_API_PORT:-8080}
+    image: dubai-storefront:latest
+    container_name: dubai_storefront
+    restart: unless-stopped
+    networks:
+      - dubai_net
+    depends_on:
+      - api
+    environment:
+      HOST: 0.0.0.0
+      PORT: 3000
+    ports:
+      - "${STOREFRONT_PORT:-5173}:3000"

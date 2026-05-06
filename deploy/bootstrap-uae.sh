@@ -38,5 +38,6 @@ fi
 echo ">>> Building and starting stack (docker compose)..."
 docker compose up -d --build
 
-echo ">>> Done. API: http://<server-ip>:8080  Admin (dev): http://<server-ip>:3000  Grafana: :3001"
+echo ">>> Done. API: http://<server-ip>:8080  Admin (dev): http://<server-ip>:3000  Storefront (dev): http://<server-ip>:5173  Grafana: :3001"
+echo ">>> Add to CORS_ALLOWED_ORIGINS: http://<server-ip>:3000 and http://<server-ip>:5173 (comma-separated)."
 echo ">>> Ensure firewall allows required ports or put nginx/Caddy in front with TLS."

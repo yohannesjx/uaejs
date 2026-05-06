@@ -1,6 +1,34 @@
+import { browser } from "$app/environment";
+import { env } from "$env/dynamic/public";
 import type { ProductColorSwatch, ProductVariantAvailability, StoreCollection, UiProduct } from "./types";
 
-const API_BASE = "http://localhost:8080";
+/**
+ * API origin for the browser and for SSR fetches.
+ * When the app is opened on a public host but env still points at loopback,
+ * use same hostname with the API port (mirrors admin-dashboard api-client).
+ */
+function getApiBaseUrl(): string {
+  const fromEnv = env.PUBLIC_API_BASE_URL;
+  const apiPort = env.PUBLIC_API_PORT ?? "8080";
+
+  if (browser) {
+    const h = window.location.hostname;
+    const onLoopback = h === "localhost" || h === "127.0.0.1";
+    if (!onLoopback) {
+      const envLooksLoopback =
+        !fromEnv || fromEnv.includes("localhost") || fromEnv.includes("127.0.0.1");
+      if (envLooksLoopback) {
+        return `${window.location.protocol}//${h}:${apiPort}`;
+      }
+      return fromEnv;
+    }
+    if (fromEnv) return fromEnv;
+    return `http://localhost:${apiPort}`;
+  }
+
+  if (fromEnv) return fromEnv;
+  return `http://127.0.0.1:${apiPort}`;
+}
 const CACHE_TTL_MS = 30_000;
 const DEBOUNCE_MS = 120;
 const ADMIN_PAGE_SIZE = 100;
@@ -327,7 +355,7 @@ async function requestUnknown(path: string): Promise<unknown> {
   if (existing) return existing;
 
   const run = (async () => {
-    const res = await fetch(`${API_BASE}${path}`, { headers: buildHeaders(), credentials: "include" });
+    const res = await fetch(`${getApiBaseUrl()}${path}`, { headers: buildHeaders(), credentials: "include" });
     if (!res.ok) throw new Error(`API ${res.status}`);
     return res.json();
   })();
@@ -371,7 +399,7 @@ async function fetchAllStoreProductsAggregate(collectionSlug?: string): Promise<
     const slug = normalizeCollectionSlugParam(collectionSlug);
     if (slug) qs.set("collection_slug", slug);
 
-    const res = await fetch(`${API_BASE}/store/products?${qs}`, {
+    const res = await fetch(`${getApiBaseUrl()}/store/products?${qs}`, {
       headers: buildHeaders(),
       credentials: "include",
     });
@@ -466,7 +494,7 @@ export function invalidateAllProductCaches() {
 }
 
 async function requestUnknownNoCache(path: string): Promise<unknown> {
-  const res = await fetch(`${API_BASE}${path}`, { headers: buildHeaders(), credentials: "include" });
+  const res = await fetch(`${getApiBaseUrl()}${path}`, { headers: buildHeaders(), credentials: "include" });
   if (!res.ok) throw new Error(`API ${res.status}`);
   return res.json();
 }

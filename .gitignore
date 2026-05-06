@@ -19,6 +19,7 @@ node_modules/
 **/.next/
 **/dist/
 frontend/.svelte-kit/
+frontend/build/
 admin-dashboard/.next/
 
 # Go test artifacts
