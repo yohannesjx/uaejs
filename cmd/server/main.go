@@ -12,6 +12,7 @@ import (
 	"github.com/dubai-retail/os/internal/alerts"
 	"github.com/dubai-retail/os/internal/config"
 	"github.com/dubai-retail/os/internal/handler/http/router"
+	"github.com/dubai-retail/os/internal/migrate"
 	"github.com/dubai-retail/os/internal/metrics"
 	"github.com/dubai-retail/os/internal/repository/postgres"
 	"github.com/dubai-retail/os/internal/repository/redis"
@@ -51,6 +52,10 @@ func main() {
 		log.Fatal("failed to connect to postgres", zap.Error(err))
 	}
 	defer db.Close()
+
+	if err := migrate.EnsureAdminSchema(context.Background(), db); err != nil {
+		log.Fatal("admin schema bootstrap failed", zap.Error(err))
+	}
 
 	// ── Redis ─────────────────────────────────────────────────────────────────
 	rdb := redis.NewClient(cfg.RedisURL)

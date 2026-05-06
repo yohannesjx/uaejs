@@ -18,6 +18,7 @@ fi
 
 PG_USER="${POSTGRES_USER:-dubai_admin}"
 PG_DB="${POSTGRES_DB:-dubai_retail}"
+PG_PASS="${POSTGRES_PASSWORD:-change_me_in_prod}"
 
 echo ">>> Applying SQL migrations to database '$PG_DB' as '$PG_USER' (postgres service)"
 
@@ -30,7 +31,8 @@ while IFS= read -r f; do
 	[[ -z "${f:-}" ]] && continue
 	base="$(basename "$f")"
 	echo ">>> $base"
-	docker compose exec -T postgres psql -v ON_ERROR_STOP=1 -U "$PG_USER" -d "$PG_DB" <"$f"
+	docker compose exec -T -e "PGPASSWORD=$PG_PASS" postgres \
+		psql -v ON_ERROR_STOP=1 -U "$PG_USER" -d "$PG_DB" -h 127.0.0.1 <"$f"
 done <<< "$sorted"
 
 echo ">>> Done."
