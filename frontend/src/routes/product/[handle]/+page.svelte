@@ -20,6 +20,13 @@
   let lightboxIndex = $state(0);
   let touchStartX = $state<number | null>(null);
   let touchStartY = $state<number | null>(null);
+
+  /** Swipe-back (history): left-edge or details panel, disabled while lightbox open */
+  type SwipeBackMode = "edge" | "details";
+  let swipeBackStart = $state<{ x: number; y: number; mode: SwipeBackMode } | null>(null);
+  const SWIPE_BACK_EDGE_X = 36;
+  const SWIPE_BACK_EDGE_MIN_DX = 64;
+  const SWIPE_BACK_DETAILS_MIN_DX = 88;
   let stockNotice = $state("");
   let loading = $state(true);
   let errorMessage = $state("");
@@ -191,6 +198,40 @@
     touchStartX = null;
     touchStartY = null;
   }
+
+  function onSwipeBackTouchStart(e: TouchEvent) {
+    if (lightboxOpen) return;
+    const t = e.touches[0];
+    if (!t) return;
+    const x = t.clientX;
+    const y = t.clientY;
+    const target = e.target;
+    let inDetails = false;
+    if (target instanceof Element) {
+      inDetails = !!target.closest("[data-pdp-swipe-back-details]");
+    }
+    if (x <= SWIPE_BACK_EDGE_X) {
+      swipeBackStart = { x, y, mode: "edge" };
+    } else if (inDetails) {
+      swipeBackStart = { x, y, mode: "details" };
+    } else {
+      swipeBackStart = null;
+    }
+  }
+
+  function onSwipeBackTouchEnd(e: TouchEvent) {
+    const start = swipeBackStart;
+    swipeBackStart = null;
+    if (lightboxOpen || !start) return;
+    const t = e.changedTouches[0];
+    if (!t) return;
+    const dx = t.clientX - start.x;
+    const dy = t.clientY - start.y;
+    const minDx = start.mode === "edge" ? SWIPE_BACK_EDGE_MIN_DX : SWIPE_BACK_DETAILS_MIN_DX;
+    if (dx > minDx && dx > Math.abs(dy) * 1.15) {
+      history.back();
+    }
+  }
 </script>
 
 <svelte:head>
@@ -217,6 +258,13 @@
     <a href="/shop" class="mt-4 inline-block text-xs font-semibold uppercase tracking-widest text-zinc-500 hover:text-black">Return to Shop</a>
   </div>
 {:else if product}
+  <!-- Gesture layer: left-edge / details swipe-right → history.back(); no focus trap -->
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <div
+    class="relative min-w-0"
+    ontouchstart={onSwipeBackTouchStart}
+    ontouchend={onSwipeBackTouchEnd}
+  >
   <div class="-mx-4 md:-mx-6 xl:-mx-8 lg:mx-0 lg:grid lg:grid-cols-[1fr_400px] xl:grid-cols-[1fr_450px] lg:gap-12 lg:items-start">
     
     <!-- Image Gallery -->
@@ -238,8 +286,11 @@
       {/if}
     </div>
 
-    <!-- Product Details (Sticky on Desktop) -->
-    <div class="px-4 md:px-6 xl:px-8 lg:px-0 pt-8 pb-32 lg:pb-8 lg:sticky lg:top-[100px]">
+    <!-- Product Details (Sticky on Desktop); swipe-right-back on mobile via data attr -->
+    <div
+      class="px-4 md:px-6 xl:px-8 lg:px-0 pt-8 pb-32 lg:pb-8 lg:sticky lg:top-[100px]"
+      data-pdp-swipe-back-details
+    >
       <div class="mb-8">
         <h1 class="text-sm md:text-base font-normal uppercase tracking-widest text-zinc-600">{product.title}</h1>
         <p class="text-2xl md:text-3xl font-black text-black mt-1">{product.price.toFixed(2)} AED</p>
@@ -421,6 +472,7 @@
     {:else if stockNotice}
       <p class="mt-2 text-center text-[11px] uppercase tracking-wider text-rose-500">{stockNotice}</p>
     {/if}
+  </div>
   </div>
 {/if}
 
