@@ -3,6 +3,8 @@ package router
 import (
 	"encoding/json"
 	"net/http"
+	"os"
+	"strings"
 
 	"github.com/dubai-retail/os/internal/metrics"
 	appMiddleware "github.com/dubai-retail/os/internal/middleware"
@@ -14,6 +16,25 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.uber.org/zap"
 )
+
+// corsAllowedOrigins merges built-in dev origins with CORS_ALLOWED_ORIGINS (comma-separated).
+// Set e.g. CORS_ALLOWED_ORIGINS=http://203.0.113.10:3000 for remote admin dashboards.
+func corsAllowedOrigins() []string {
+	origins := []string{
+		"http://localhost:3000", "http://localhost:3002", "http://localhost:5173",
+		"http://127.0.0.1:3000", "http://127.0.0.1:3002", "http://127.0.0.1:5173",
+	}
+	if extra := strings.TrimSpace(os.Getenv("CORS_ALLOWED_ORIGINS")); extra != "" {
+		for _, o := range strings.Split(extra, ",") {
+			o = strings.TrimSpace(o)
+			if o == "" {
+				continue
+			}
+			origins = append(origins, o)
+		}
+	}
+	return origins
+}
 
 // New builds and returns the root HTTP router.
 func New(
@@ -29,7 +50,7 @@ func New(
 
 	// ── CORS (allow admin dashboard origins) ──────────────────────────────────
 	r.Use(cors.Handler(cors.Options{
-		AllowedOrigins:   []string{"http://localhost:3000", "http://localhost:3002", "http://localhost:5173", "http://127.0.0.1:3000", "http://127.0.0.1:3002", "http://127.0.0.1:5173"},
+		AllowedOrigins:   corsAllowedOrigins(),
 		AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-Tenant-ID"},
 		AllowCredentials: true,
