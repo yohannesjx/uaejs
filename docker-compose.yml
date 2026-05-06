@@ -183,26 +183,29 @@ services:
       - prometheus
 
   # ---------------------------------------------------------------------------
-  # Next.js Admin Dashboard
+  # Next.js Admin Dashboard (production: next build + standalone node server)
+  # Rebuild after changing NEXT_PUBLIC_* in .env: docker compose build admin_dashboard
   # ---------------------------------------------------------------------------
   admin_dashboard:
-    image: node:22-alpine
+    build:
+      context: ./admin-dashboard
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:${API_PORT:-8080}}
+        NEXT_PUBLIC_API_PORT: ${NEXT_PUBLIC_API_PORT:-8080}
+    image: dubai-admin-dashboard:latest
     container_name: dubai_admin_dashboard
     restart: unless-stopped
     networks:
       - dubai_net
     depends_on:
       - api
-    working_dir: /app/admin-dashboard
     environment:
-      # Browser-reachable API URL (use http://YOUR_PUBLIC_IP:8080 for remote admin, not localhost)
-      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:${API_PORT:-8080}}
-    command: >
-      sh -c "npm install && npm run dev -- --hostname 0.0.0.0 --port 3000"
+      NODE_ENV: production
+      PORT: 3000
+      HOSTNAME: 0.0.0.0
     ports:
       - "3000:3000"
-    volumes:
-      - ./admin-dashboard:/app/admin-dashboard
 
   # ---------------------------------------------------------------------------
   # SvelteKit storefront (production image: adapter-node, multi-stage Dockerfile)
