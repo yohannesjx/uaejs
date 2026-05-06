@@ -49,8 +49,38 @@ import type {
   InventoryTransfer,
 } from "@/types/api";
 
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080";
+/**
+ * API origin for browser calls.
+ * When the dashboard is opened via a public host (not localhost), using
+ * NEXT_PUBLIC_API_BASE_URL=http://localhost:8080 makes the *visitor's* browser
+ * call their own loopback — blocked by Private Network Access / CORS.
+ * So if env is missing or still points to loopback while the page is on a
+ * real host, we use the same hostname with port 8080.
+ */
+function getApiBaseUrl(): string {
+  const fromEnv = process.env.NEXT_PUBLIC_API_BASE_URL;
+
+  if (typeof window !== "undefined") {
+    const h = window.location.hostname;
+    const onLoopback = h === "localhost" || h === "127.0.0.1";
+    if (!onLoopback) {
+      const envLooksLoopback =
+        !fromEnv ||
+        fromEnv.includes("localhost") ||
+        fromEnv.includes("127.0.0.1");
+      if (envLooksLoopback) {
+        const port = process.env.NEXT_PUBLIC_API_PORT ?? "8080";
+        return `${window.location.protocol}//${h}:${port}`;
+      }
+      return fromEnv;
+    }
+    if (fromEnv) return fromEnv;
+    return `http://localhost:${process.env.NEXT_PUBLIC_API_PORT ?? "8080"}`;
+  }
+
+  if (fromEnv) return fromEnv;
+  return `http://localhost:${process.env.NEXT_PUBLIC_API_PORT ?? "8080"}`;
+}
 
 export class ApiError extends Error {
   status: number;
@@ -98,7 +128,7 @@ async function refreshTokens() {
   const refreshToken = getRefreshToken();
   if (!refreshToken) throw new ApiError(401, "Session expired");
 
-  const response = await fetch(`${API_BASE_URL}/auth/refresh`, {
+  const response = await fetch(`${getApiBaseUrl()}/auth/refresh`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ refresh_token: refreshToken }),
@@ -130,7 +160,7 @@ export async function apiFetch<T>(
   }
 
   try {
-    const response = await fetch(`${API_BASE_URL}${path}`, {
+    const response = await fetch(`${getApiBaseUrl()}${path}`, {
       ...init,
       headers,
     });
@@ -370,7 +400,7 @@ export const api = {
     ),
   getOrder: (id: string) => apiFetch<Order>(`/api/v1/orders/${id}`, { auth: false }),
   getInvoiceXml: async (id: string) => {
-    const response = await fetch(`${API_BASE_URL}/api/v1/orders/${id}/invoice`);
+    const response = await fetch(`${getApiBaseUrl()}/api/v1/orders/${id}/invoice`);
     if (!response.ok) {
       const text = await response.text();
       throw new ApiError(response.status, text);
