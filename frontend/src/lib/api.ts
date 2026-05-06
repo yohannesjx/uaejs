@@ -29,6 +29,32 @@ function getApiBaseUrl(): string {
   if (fromEnv) return fromEnv;
   return `http://127.0.0.1:${apiPort}`;
 }
+
+/**
+ * API may store media as http://127.0.0.1:8080/uploads/...; browsers block that from a public storefront.
+ * Rebuild the URL using the same origin as {@link getApiBaseUrl}.
+ */
+export function publicAssetUrl(stored: string | null | undefined): string {
+  if (stored == null || stored === "") return "";
+  const raw = stored.trim();
+  const idx = raw.indexOf("/uploads/");
+  if (idx === -1) return raw;
+  return `${getApiBaseUrl()}${raw.slice(idx)}`;
+}
+
+function rewriteUiProductMedia(p: UiProduct): UiProduct {
+  return {
+    ...p,
+    imageUrl: p.imageUrl ? publicAssetUrl(p.imageUrl) : null,
+    images: (p.images ?? []).map((u) => publicAssetUrl(u)),
+    colorSwatches: (p.colorSwatches ?? []).map((s) => ({
+      ...s,
+      imageUrl: s.imageUrl ? publicAssetUrl(s.imageUrl) : null,
+      images: (s.images ?? []).map((u) => publicAssetUrl(u)),
+    })),
+  };
+}
+
 const CACHE_TTL_MS = 30_000;
 const DEBOUNCE_MS = 120;
 const ADMIN_PAGE_SIZE = 100;
@@ -164,7 +190,7 @@ function normalizeProduct(raw: unknown): UiProduct | null {
   const title = asString(r.title || r.name);
   if (!id || !title) return null;
 
-  return {
+  return rewriteUiProductMedia({
     id,
     slug: slug || id,
     title,
@@ -181,7 +207,7 @@ function normalizeProduct(raw: unknown): UiProduct | null {
     description: asString(r.description, ""),
     inventory: r.inventory === null ? null : asNumber(r.inventory, 0),
     variants: []
-  };
+  });
 }
 
 function normalizeAdminProductList(payload: unknown): UiProduct[] {
@@ -254,7 +280,7 @@ function normalizeAdminProductList(payload: unknown): UiProduct[] {
     });
   }
 
-  return Array.from(grouped.values());
+  return Array.from(grouped.values()).map(rewriteUiProductMedia);
 }
 
 function normalizeProductDetail(raw: unknown, fallback: UiProduct | null = null): UiProduct | null {
@@ -315,7 +341,7 @@ function normalizeProductDetail(raw: unknown, fallback: UiProduct | null = null)
   }
 
   const imageList = Array.from(images);
-  return {
+  return rewriteUiProductMedia({
     id: productID,
     slug: slug || productID,
     title: title || fallback?.title || "Untitled",
@@ -332,7 +358,7 @@ function normalizeProductDetail(raw: unknown, fallback: UiProduct | null = null)
     description,
     inventory,
     variants: variantsAvailability
-  };
+  });
 }
 
 function buildHeaders(): Headers {
@@ -553,7 +579,11 @@ function normalizeStoreCollections(raw: unknown): StoreCollection[] {
       slug,
       description: typeof o.description === "string" || o.description === null ? (o.description as string | null) : undefined,
       image_url:
-        typeof o.image_url === "string" || o.image_url === null ? (o.image_url as string | null) : undefined,
+        typeof o.image_url === "string"
+          ? publicAssetUrl(o.image_url as string)
+          : o.image_url === null
+            ? null
+            : undefined,
       product_count: asNumberLike(o.product_count, 0),
     });
   }
