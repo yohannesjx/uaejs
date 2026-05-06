@@ -36,6 +36,25 @@ func corsAllowedOrigins() []string {
 	return origins
 }
 
+func corsOptionsFromEnv() cors.Options {
+	o := cors.Options{
+		AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
+		AllowedHeaders:   []string{"*"},
+		AllowCredentials: true,
+		MaxAge:           300,
+	}
+	relaxed := os.Getenv("CORS_ALLOW_ANY_ORIGIN")
+	if relaxed == "1" || strings.EqualFold(relaxed, "true") {
+		// Reflects the request Origin (works with AllowCredentials). Do not use on untrusted public APIs.
+		o.AllowOriginFunc = func(_ *http.Request, origin string) bool {
+			return strings.TrimSpace(origin) != ""
+		}
+		return o
+	}
+	o.AllowedOrigins = corsAllowedOrigins()
+	return o
+}
+
 // New builds and returns the root HTTP router.
 func New(
 	svcs *service.Services,
@@ -48,15 +67,8 @@ func New(
 
 	tenantMW := appMiddleware.NewTenantMiddleware(adminSvcs.Tenant, log)
 
-	// ── CORS (allow admin dashboard origins) ──────────────────────────────────
-	r.Use(cors.Handler(cors.Options{
-		AllowedOrigins:   corsAllowedOrigins(),
-		AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
-		// "*" avoids preflight failures when browsers add uncommon Access-Control-Request-Headers.
-		AllowedHeaders:   []string{"*"},
-		AllowCredentials: true,
-		MaxAge:           300,
-	}))
+	// ── CORS (admin + storefront origins via CORS_ALLOWED_ORIGINS; optional CORS_ALLOW_ANY_ORIGIN) ──
+	r.Use(cors.Handler(corsOptionsFromEnv()))
 
 	// ── Global middleware ────────────────────────────────────────────────────
 	r.Use(middleware.RequestID)
