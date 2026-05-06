@@ -1,0 +1,100 @@
+@import "tailwindcss";
+
+:root {
+  --background: #f6f7fb;
+  --foreground: #111827;
+  --panel: #ffffff;
+  --sidebar: #ffffff;
+  --muted: #eef2ff;
+  --muted-foreground: #667085;
+  --border: #e5e7eb;
+  --primary: #111827;
+  --primary-foreground: #ffffff;
+  --ring: #6366f1;
+  --danger: #e11d48;
+  --chart-1: #6366f1;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+.dark {
+  --background: #09090b;
+  --foreground: #fafafa;
+  --panel: #121214;
+  --sidebar: #0f1012;
+  --muted: #1f2530;
+  --muted-foreground: #9ca3af;
+  --border: #23262d;
+  --primary: #eef2ff;
+  --primary-foreground: #111827;
+  --ring: #818cf8;
+  --danger: #fb7185;
+  --chart-1: #818cf8;
+}
+
+* {
+  border-color: var(--border);
+}
+
+html {
+  color-scheme: light;
+}
+
+.dark html,
+.dark body {
+  color-scheme: dark;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+*:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+body,
+html {
+  min-height: 100%;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--ring) 25%, white);
+}
+
+[cmdk-root] {
+  font-family: inherit;
+}
+
+[cmdk-group-heading] {
+  padding: 0.5rem 0.75rem;
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+}
+
+/* Plain number inputs: hide spinner arrows */
+input[type="number"] {
+  -moz-appearance: textfield;
+}
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}

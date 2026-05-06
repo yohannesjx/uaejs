@@ -1,0 +1,133 @@
+groups:
+  - name: dubai_retail_inventory
+    interval: 1m
+    rules:
+
+      # Variant stock dropped to or below the reorder point (tracked via gauge)
+      - alert: LowStockVariant
+        expr: dubai_retail_stock_level < 10
+        for: 2m
+        labels:
+          severity: warning
+          team: operations
+        annotations:
+          summary: "Low stock: {{ $labels.sku }}"
+          description: >
+            Variant {{ $labels.variant_id }} (SKU {{ $labels.sku }}) has only
+            {{ $value | printf "%.0f" }} units remaining. Consider raising a
+            purchase order before the next shipment window.
+
+      # Zero stock – potential stockout on active SKU
+      - alert: StockoutVariant
+        expr: dubai_retail_stock_level == 0
+        for: 5m
+        labels:
+          severity: critical
+          team: operations
+        annotations:
+          summary: "Stockout: {{ $labels.sku }}"
+          description: >
+            Variant {{ $labels.variant_id }} (SKU {{ $labels.sku }}) has reached
+            zero stock. All sales for this variant will be rejected.
+
+  - name: dubai_retail_orders
+    interval: 1m
+    rules:
+
+      # Order failure rate > 5% of processed orders over last 5 minutes
+      - alert: HighOrderFailureRate
+        expr: >
+          sum(rate(dubai_retail_orders_failed_total[5m]))
+          /
+          (sum(rate(dubai_retail_orders_processed_total[5m])) + sum(rate(dubai_retail_orders_failed_total[5m])))
+          > 0.05
+        for: 2m
+        labels:
+          severity: warning
+          team: engineering
+        annotations:
+          summary: "Elevated order failure rate ({{ $value | humanizePercentage }})"
+          description: >
+            More than 5% of order attempts are failing.
+            Check application logs for insufficient_stock or db_error causes.
+
+      # Sustained insufficient stock errors (stock management issue)
+      - alert: InsufficientStockErrors
+        expr: rate(dubai_retail_orders_failed_total{reason="insufficient_stock"}[10m]) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+          team: operations
+        annotations:
+          summary: "Persistent insufficient-stock failures"
+          description: >
+            Orders are being rejected due to insufficient stock at a rate of
+            {{ $value | printf "%.2f" }}/s. Review recent sales velocity and
+            pending shipments.
+
+  - name: dubai_retail_compliance
+    interval: 2m
+    rules:
+
+      # Orders confirmed but no invoice_number (compliance gap)
+      - alert: PendingInvoicesAccumulating
+        expr: dubai_retail_pending_invoices > 0
+        for: 5m
+        labels:
+          severity: critical
+          team: compliance
+        annotations:
+          summary: "{{ $value | printf \"%.0f\" }} order(s) missing invoice number"
+          description: >
+            Orders in 'confirmed' state without an invoice_number suggest the
+            ComplianceService.Execute step failed or was skipped. These orders
+            may not be FTA-compliant. Immediate investigation required.
+
+      # Sandbox rejections accumulating
+      - alert: ASPSandboxRejections
+        expr: increase(dubai_retail_invoices_generated_total{invoice_type="sandbox_rejected"}[1h]) > 5
+        for: 0m
+        labels:
+          severity: warning
+          team: compliance
+        annotations:
+          summary: "{{ $value | printf \"%.0f\" }} ASP sandbox rejections in last hour"
+          description: >
+            UBL XML invoices are failing ASP sandbox validation. Review recent
+            order invoices for malformed XML or missing mandatory PINT-AE fields.
+
+  - name: dubai_retail_returns
+    interval: 2m
+    rules:
+
+      # QC photo mismatch spike (potential fraud wave)
+      - alert: QCPhotoMismatchSpike
+        expr: increase(dubai_retail_qc_photo_mismatch_total[1h]) > 3
+        for: 0m
+        labels:
+          severity: warning
+          team: operations
+        annotations:
+          summary: "{{ $value | printf \"%.0f\" }} QC photo mismatch(es) in last hour"
+          description: >
+            Multiple return items failed QC photo comparison. This may indicate
+            a coordinated fraudulent return attempt. Review return requests
+            flagged with qc_passed=false in the last hour.
+
+  - name: dubai_retail_reservations
+    interval: 1m
+    rules:
+
+      # Large number of abandoned reservations (UX / checkout issue)
+      - alert: HighAbandonedCartRate
+        expr: rate(dubai_retail_reservations_expired_total[30m]) > 0.5
+        for: 5m
+        labels:
+          severity: info
+          team: product
+        annotations:
+          summary: "High abandoned cart rate ({{ $value | printf \"%.2f\" }}/s)"
+          description: >
+            Stock reservations are expiring at an elevated rate, indicating
+            customers are not completing checkout. Consider reducing reservation
+            TTL or investigating checkout UX issues.

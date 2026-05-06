@@ -1,0 +1,11 @@
+apiVersion: 1
+
+providers:
+  - name: Dubai Retail OS
+    orgId: 1
+    folder: Dubai Retail OS
+    type: file
+    disableDeletion: false
+    editable: true
+    options:
+      path: /etc/grafana/provisioning/dashboards

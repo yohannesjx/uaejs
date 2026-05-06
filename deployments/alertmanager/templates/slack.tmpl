@@ -1,0 +1,15 @@
+{{ define "slack.title" }}
+[{{ .Status | toUpper }}] {{ .CommonLabels.alertname }} ({{ .CommonLabels.severity }})
+{{ end }}
+
+{{ define "slack.text" }}
+{{ range .Alerts }}
+*Alert:* {{ .Annotations.summary }}
+*Description:* {{ .Annotations.description }}
+*Severity:* {{ .Labels.severity }}
+*Team:* {{ .Labels.team }}
+{{ if .Labels.variant_id }}*Variant:* {{ .Labels.variant_id }}{{ end }}
+{{ if .Labels.sku }}*SKU:* {{ .Labels.sku }}{{ end }}
+*Started:* {{ .StartsAt }}
+{{ end }}
+{{ end }}

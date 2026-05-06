@@ -1,0 +1,204 @@
+version: "3.9"
+
+# =============================================================================
+# Dubai Retail OS · Development Environment
+# =============================================================================
+
+networks:
+  dubai_net:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
+  prometheus_data:
+  grafana_data:
+
+services:
+
+  # ---------------------------------------------------------------------------
+  # PostgreSQL 16
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    container_name: dubai_postgres
+    restart: unless-stopped
+    networks:
+      - dubai_net
+    environment:
+      POSTGRES_DB:       ${POSTGRES_DB:-dubai_retail}
+      POSTGRES_USER:     ${POSTGRES_USER:-dubai_admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change_me_in_prod}
+      PGDATA:            /var/lib/postgresql/data/pgdata
+    ports:
+      - "${POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-dubai_admin} -d ${POSTGRES_DB:-dubai_retail}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  # ---------------------------------------------------------------------------
+  # Redis 7
+  # ---------------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: dubai_redis
+    restart: unless-stopped
+    networks:
+      - dubai_net
+    command: >
+      redis-server
+      --requirepass ${REDIS_PASSWORD:-change_me_in_prod}
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+      --save 60 1
+      --appendonly yes
+    ports:
+      - "${REDIS_PORT:-6380}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-change_me_in_prod}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ---------------------------------------------------------------------------
+  # Go API  (built from source, live-reload via Air)
+  # ---------------------------------------------------------------------------
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: dev
+    container_name: dubai_api
+    restart: unless-stopped
+    networks:
+      - dubai_net
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      APP_ENV:            development
+      APP_PORT:           8080
+      METRICS_PORT:       9090
+      DATABASE_URL:       postgres://${POSTGRES_USER:-dubai_admin}:${POSTGRES_PASSWORD:-change_me_in_prod}@postgres:5432/${POSTGRES_DB:-dubai_retail}?sslmode=disable
+      REDIS_URL:          redis://:${REDIS_PASSWORD:-change_me_in_prod}@redis:6379/0
+      JWT_SECRET:         ${JWT_SECRET:-dev_jwt_secret_change_me}
+      RESERVATION_TTL_S:  ${RESERVATION_TTL_S:-900}
+      VAT_RATE:           0.05
+      CURRENCY:           AED
+      SELLER_NAME:        ${SELLER_NAME:-Dubai Fashion House LLC}
+      SELLER_NAME_AR:     ${SELLER_NAME_AR:-دبي فاشن هاوس ذ.م.م}
+      SELLER_TRN:         ${SELLER_TRN:-100000000000003}
+      SELLER_TRADE_LICENSE: ${SELLER_TRADE_LICENSE:-1234567}
+      SELLER_GLN:         ${SELLER_GLN:-0000000000000}
+      SELLER_STREET:      ${SELLER_STREET:-Al Quoz Industrial Area 3}
+      SELLER_CITY:        ${SELLER_CITY:-Dubai}
+      SELLER_EMAIL:       ${SELLER_EMAIL:-accounts@yourstore.ae}
+      PAYMENT_GATEWAY_DEFAULT:  ${PAYMENT_GATEWAY_DEFAULT:-stripe}
+      PAYMENT_GATEWAY_FALLBACK: ${PAYMENT_GATEWAY_FALLBACK:-network_international}
+    ports:
+      - "${API_PORT:-8080}:8080"
+      - "${METRICS_PORT:-9091}:9090"   # Prometheus scrape port (separate from API)
+    volumes:
+      - .:/app
+      - /app/vendor
+
+  # ---------------------------------------------------------------------------
+  # Prometheus
+  # ---------------------------------------------------------------------------
+  prometheus:
+    image: prom/prometheus:v2.51.0
+    container_name: dubai_prometheus
+    restart: unless-stopped
+    networks:
+      - dubai_net
+    ports:
+      - "9092:9090"
+    volumes:
+      - ./deployments/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./deployments/prometheus/rules:/etc/prometheus/rules:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=30d'
+      - '--web.enable-lifecycle'
+    depends_on:
+      - api
+
+  # ---------------------------------------------------------------------------
+  # Alertmanager
+  # ---------------------------------------------------------------------------
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    container_name: dubai_alertmanager
+    restart: unless-stopped
+    networks:
+      - dubai_net
+    ports:
+      - "9093:9093"
+    volumes:
+      - ./deployments/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - ./deployments/alertmanager/templates:/etc/alertmanager/templates:ro
+    command:
+      - '--config.file=/etc/alertmanager/alertmanager.yml'
+      - '--storage.path=/alertmanager'
+    environment:
+      SLACK_WEBHOOK_OPERATIONS:  ${SLACK_WEBHOOK_OPERATIONS:-}
+      SLACK_WEBHOOK_CRITICAL:    ${SLACK_WEBHOOK_CRITICAL:-}
+      SLACK_WEBHOOK_COMPLIANCE:  ${SLACK_WEBHOOK_COMPLIANCE:-}
+      SLACK_WEBHOOK_ENGINEERING: ${SLACK_WEBHOOK_ENGINEERING:-}
+    depends_on:
+      - prometheus
+
+  # ---------------------------------------------------------------------------
+  # Grafana
+  # ---------------------------------------------------------------------------
+  grafana:
+    image: grafana/grafana:10.4.0
+    container_name: dubai_grafana
+    restart: unless-stopped
+    networks:
+      - dubai_net
+    ports:
+      - "3001:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER:     ${GRAFANA_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-dubai_grafana}
+      GF_USERS_ALLOW_SIGN_UP:     false
+      GF_INSTALL_PLUGINS:         grafana-piechart-panel
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./deployments/grafana/provisioning:/etc/grafana/provisioning:ro
+    depends_on:
+      - prometheus
+
+  # ---------------------------------------------------------------------------
+  # Next.js Admin Dashboard
+  # ---------------------------------------------------------------------------
+  admin_dashboard:
+    image: node:22-alpine
+    container_name: dubai_admin_dashboard
+    restart: unless-stopped
+    networks:
+      - dubai_net
+    depends_on:
+      - api
+    working_dir: /app/admin-dashboard
+    environment:
+      NEXT_PUBLIC_API_BASE_URL: http://localhost:${API_PORT:-8080}
+    command: >
+      sh -c "npm install && npm run dev -- --hostname 0.0.0.0 --port 3000"
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./admin-dashboard:/app/admin-dashboard

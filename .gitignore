@@ -1,0 +1,27 @@
+# Binaries
+tmp/
+*.exe
+*.out
+.DS_Store
+
+# Environment
+.env
+*.env.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# Dependency cache
+vendor/
+node_modules/
+**/.next/
+**/dist/
+frontend/.svelte-kit/
+admin-dashboard/.next/
+
+# Go test artifacts
+*.test
+*.prof
+coverage.out
