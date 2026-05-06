@@ -49,6 +49,21 @@ export function MediaLibraryModal({
     const scrollRef = useRef<HTMLDivElement>(null);
     const wasOpenRef = useRef(false);
 
+    // Responsive grid columns + virtual row height (avoid 5-col microscopic cells on phones)
+    const [gridColumns, setGridColumns] = useState(5);
+    useEffect(() => {
+        const update = () => {
+            const w = window.innerWidth;
+            if (w < 380) setGridColumns(2);
+            else if (w < 520) setGridColumns(3);
+            else if (w < 900) setGridColumns(4);
+            else setGridColumns(5);
+        };
+        update();
+        window.addEventListener("resize", update);
+        return () => window.removeEventListener("resize", update);
+    }, []);
+
     // Selection state
     const [selected, setSelected] = useState<MediaAsset[]>([]);
 
@@ -83,13 +98,11 @@ export function MediaLibraryModal({
 
     const allItems = data?.pages.flatMap((p) => p.items) ?? [];
 
-    // Virtualizer for infinite grid (5 columns)
-    const columns = 5;
-    const rowCount = Math.ceil(allItems.length / columns);
+    const rowCount = Math.ceil(allItems.length / gridColumns);
     const virtualizer = useVirtualizer({
         count: hasNextPage ? rowCount + 1 : rowCount,
         getScrollElement: () => scrollRef.current,
-        estimateSize: () => 180, // rough height of a row
+        estimateSize: () => (gridColumns <= 3 ? 152 : 180),
         overscan: 5,
     });
 
@@ -99,7 +112,7 @@ export function MediaLibraryModal({
             virtualizer.measure();
         });
         return () => cancelAnimationFrame(frame);
-    }, [open, allItems.length, virtualizer]);
+    }, [open, allItems.length, gridColumns, virtualizer]);
 
     // Handle uploading
     const { mutateAsync: uploadItem, isPending: isUploading } = useMutation({
@@ -166,26 +179,26 @@ export function MediaLibraryModal({
         <Dialog.Root open={open} onOpenChange={onOpenChange}>
             <Dialog.Portal>
                 <Dialog.Overlay className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm" />
-                <Dialog.Content className="fixed inset-4 z-50 flex flex-col md:inset-auto md:left-1/2 md:top-1/2 md:h-[85vh] md:w-[min(1200px,calc(100%-2rem))] md:-translate-x-1/2 md:-translate-y-1/2 overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--background)] shadow-2xl">
+                <Dialog.Content className="fixed inset-0 z-50 flex max-h-[100dvh] flex-col overflow-hidden rounded-none border-0 border-[var(--border)] bg-[var(--background)] shadow-2xl sm:inset-3 sm:rounded-2xl sm:border md:inset-auto md:left-1/2 md:top-1/2 md:h-[min(85vh,100dvh)] md:w-[min(1200px,calc(100%-2rem))] md:max-h-[85vh] md:-translate-x-1/2 md:-translate-y-1/2 md:rounded-2xl md:border">
                     <Dialog.Title className="sr-only">Media Library</Dialog.Title>
                     <Dialog.Description className="sr-only">Manage your media assets</Dialog.Description>
 
                     {/* Header */}
-                    <div className="flex h-16 shrink-0 items-center justify-between border-b border-[var(--border)] px-6">
-                        <h2 className="text-lg font-semibold">Media Manager</h2>
-                        <div className="flex items-center gap-2">
-                            <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-                            <Button onClick={handleDone} className="min-w-24">
-                                Done {selected.length > 0 && `(${selected.length})`}
+                    <div className="flex min-h-12 shrink-0 items-center justify-between gap-2 border-b border-[var(--border)] px-3 py-2 pt-[max(0.5rem,env(safe-area-inset-top))] sm:h-16 sm:px-6 sm:py-0 sm:pt-0">
+                        <h2 className="truncate text-base font-semibold sm:text-lg">Media</h2>
+                        <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+                            <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>Cancel</Button>
+                            <Button size="sm" className="min-w-[4.5rem] md:min-w-24" onClick={handleDone}>
+                                Done{selected.length > 0 && ` (${selected.length})`}
                             </Button>
                         </div>
                     </div>
 
-                    <div className="flex flex-1 overflow-hidden" {...getRootProps()}>
+                    <div className="flex min-h-0 flex-1 flex-col overflow-hidden md:flex-row" {...getRootProps()}>
                         <input {...getInputProps()} />
 
                         {/* Main Content Area */}
-                        <div className="flex flex-1 flex-col overflow-hidden relative">
+                        <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden md:min-w-0">
 
                             {/* Drag overlay */}
                             {isDragActive && (
@@ -195,40 +208,44 @@ export function MediaLibraryModal({
                                 </div>
                             )}
 
-                            {/* Toolbar */}
-                            <div className="flex shrink-0 items-center gap-4 border-b border-[var(--border)] p-4 bg-[var(--muted)]/30">
-                                <div className="relative max-w-sm flex-1">
+                            {/* Toolbar: upload first in column layout; search | filter | upload on md+ */}
+                            <div className="flex shrink-0 flex-col gap-2 border-b border-[var(--border)] bg-[var(--muted)]/30 p-3 md:flex-row md:items-center md:gap-4 md:p-4">
+                                <div className="order-1 flex w-full items-center gap-2 md:order-3 md:ml-auto md:w-auto">
+                                    <Button
+                                        type="button"
+                                        onClick={() => openFileDialog()}
+                                        variant="default"
+                                        className="min-w-0 flex-1 gap-2 md:min-w-0 md:flex-initial"
+                                    >
+                                        <UploadCloud className="size-4 shrink-0" />
+                                        {isUploading ? "Uploading…" : "Upload"}
+                                    </Button>
+                                    {isUploading && <Loader2 className="size-5 shrink-0 animate-spin text-[var(--muted-foreground)]" />}
+                                </div>
+                                <div className="relative order-2 min-w-0 flex-1 md:order-1 md:max-w-sm">
                                     <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[var(--muted-foreground)]" />
                                     <Input
-                                        placeholder="Search alt text or tags..."
-                                        className="pl-9 bg-white dark:bg-black"
+                                        placeholder="Search…"
+                                        className="bg-white pl-9 dark:bg-black"
                                         value={search}
                                         onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearch(e.target.value)}
                                     />
                                 </div>
                                 <select
-                                    className="rounded-md border border-[var(--border)] bg-transparent px-3 py-2 text-sm"
+                                    className="order-3 h-10 w-full shrink-0 rounded-md border border-[var(--border)] bg-transparent px-3 text-sm md:order-2 md:h-9 md:w-auto md:py-0"
                                     value={type}
                                     onChange={(e) => setType(e.target.value)}
                                 >
-                                    <option value="">All Media</option>
+                                    <option value="">All</option>
                                     <option value="image">Images</option>
                                     <option value="video">Videos</option>
                                 </select>
-
-                                <div className="ml-auto flex items-center gap-2">
-                                    {isUploading && <Loader2 className="size-5 animate-spin text-[var(--muted-foreground)]" />}
-                                    <Button onClick={() => openFileDialog()} variant="outline" className="gap-2">
-                                        <UploadCloud className="size-4" />
-                                        Upload Media
-                                    </Button>
-                                </div>
                             </div>
 
                             {/* Grid Area */}
                             <div
                                 ref={scrollRef}
-                                className="flex-1 overflow-y-auto p-4"
+                                className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-2 sm:p-4"
                                 onScroll={() => {
                                     if (virtualizer.scrollElement) {
                                         const { scrollTop, scrollHeight, clientHeight } = virtualizer.scrollElement;
@@ -269,11 +286,17 @@ export function MediaLibraryModal({
                                                         height: `${virtualRow.size}px`,
                                                         transform: `translateY(${virtualRow.start}px)`,
                                                     }}
-                                                    className="grid grid-cols-5 gap-4"
+                                                    className={cn(
+                                                        "grid gap-2 sm:gap-3 md:gap-4",
+                                                        gridColumns === 2 && "grid-cols-2",
+                                                        gridColumns === 3 && "grid-cols-3",
+                                                        gridColumns === 4 && "grid-cols-4",
+                                                        gridColumns === 5 && "grid-cols-5"
+                                                    )}
                                                 >
                                                     {/* Render columns for this row */}
-                                                    {Array.from({ length: columns }).map((_, colIndex) => {
-                                                        const itemIndex = virtualRow.index * columns + colIndex;
+                                                    {Array.from({ length: gridColumns }).map((_, colIndex) => {
+                                                        const itemIndex = virtualRow.index * gridColumns + colIndex;
                                                         const asset = allItems[itemIndex];
                                                         if (!asset) return <div key={colIndex} />;
 
@@ -284,7 +307,7 @@ export function MediaLibraryModal({
                                                                 key={asset.id}
                                                                 onClick={() => toggleSelect(asset)}
                                                                 className={cn(
-                                                                    "group relative aspect-square cursor-pointer overflow-hidden rounded-xl border-2 transition-all",
+                                                                    "group relative aspect-square cursor-pointer overflow-hidden rounded-lg border-2 transition-all sm:rounded-xl",
                                                                     isSel
                                                                         ? "border-[var(--primary)] ring-2 ring-[var(--primary)]/30 ring-offset-2 ring-offset-[var(--background)]"
                                                                         : "border-[var(--border)]/60 opacity-80 hover:opacity-100 hover:border-[var(--border)]"
@@ -341,13 +364,13 @@ export function MediaLibraryModal({
                                 }}
                             />
                         ) : selected.length > 1 ? (
-                            <div className="w-80 shrink-0 border-l border-[var(--border)] bg-[var(--muted)]/10 p-6 flex flex-col items-center justify-center text-center">
-                                <div className="rounded-full bg-[var(--primary)]/10 p-6 mb-4">
-                                    <Tags className="size-10 text-[var(--primary)]" />
+                            <div className="flex max-h-[38vh] shrink-0 flex-col items-center justify-center border-t border-[var(--border)] bg-[var(--muted)]/10 px-4 py-5 text-center md:h-auto md:max-h-none md:w-80 md:border-l md:border-t-0 md:px-6 md:py-6">
+                                <div className="mb-3 rounded-full bg-[var(--primary)]/10 p-4 md:mb-4 md:p-6">
+                                    <Tags className="size-8 text-[var(--primary)] md:size-10" />
                                 </div>
-                                <h3 className="font-semibold text-lg">{selected.length} Assets Selected</h3>
-                                <p className="mt-2 text-sm text-[var(--muted-foreground)]">
-                                    Metadata editing is disabled for multiple selections.
+                                <h3 className="text-base font-semibold md:text-lg">{selected.length} selected</h3>
+                                <p className="mt-1 text-xs text-[var(--muted-foreground)] md:mt-2 md:text-sm">
+                                    Edit details when only one asset is selected.
                                 </p>
                             </div>
                         ) : null}
@@ -374,18 +397,26 @@ function MediaSidebar({ asset, onUpdate }: { asset: MediaAsset; onUpdate: (a: Me
     });
 
     return (
-        <div className="flex w-80 shrink-0 flex-col overflow-y-auto border-l border-[var(--border)] bg-[var(--muted)]/10">
-            <div className="border-b border-[var(--border)] p-4 font-medium text-sm text-[var(--muted-foreground)] uppercase tracking-wider">
-                Asset Details
+        <div className="flex max-h-[42vh] w-full shrink-0 flex-col overflow-y-auto border-t border-[var(--border)] bg-[var(--muted)]/10 pb-[env(safe-area-inset-bottom)] md:max-h-none md:h-full md:w-80 md:border-l md:border-t-0 md:pb-0">
+            <div className="shrink-0 border-b border-[var(--border)] px-4 py-2 text-xs font-medium uppercase tracking-wider text-[var(--muted-foreground)] sm:p-4 sm:text-sm">
+                Details
             </div>
-            <div className="p-6 break-words">
+            <div className="space-y-4 break-words px-4 py-3 sm:p-6">
                 {asset.mime_type.startsWith("video/") ? (
-                    <video src={publicUploadUrl(asset.url)} controls className="w-full rounded-xl bg-black aspect-video object-contain" />
+                    <video
+                        src={publicUploadUrl(asset.url)}
+                        controls
+                        className="max-h-[28vh] w-full rounded-lg bg-black object-contain md:max-h-none md:rounded-xl aspect-video"
+                    />
                 ) : (
-                    <img src={publicUploadUrl(asset.url)} alt={asset.alt} className="w-full rounded-xl bg-[var(--muted)] object-contain aspect-square" />
+                    <img
+                        src={publicUploadUrl(asset.url)}
+                        alt={asset.alt}
+                        className="mx-auto max-h-[min(28vh,12rem)] w-full rounded-lg bg-[var(--muted)] object-contain md:max-h-[min(70vh,24rem)]"
+                    />
                 )}
 
-                <div className="mt-6 space-y-4">
+                <div className="mt-4 space-y-4 sm:mt-6">
                     <div className="text-sm">
                         <p className="text-[var(--muted-foreground)]">ID</p>
                         <p className="font-mono text-xs text-[var(--primary)] break-all">{asset.id}</p>
@@ -422,7 +453,7 @@ function MediaSidebar({ asset, onUpdate }: { asset: MediaAsset; onUpdate: (a: Me
                     </Button>
 
                     {/* A delete button could go here too! */}
-                    <div className="pt-8">
+                    <div className="pt-4 sm:pt-8">
                         <Button variant="outline" className="w-full text-red-500 hover:text-red-600 hover:bg-red-50" onClick={async () => {
                             if (confirm("Are you sure you want to delete this asset?")) {
                                 await api.deleteMedia(asset.id);
