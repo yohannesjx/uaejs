@@ -6,7 +6,7 @@ import { useInfiniteQuery } from "@tanstack/react-query";
 import { Check, ImageIcon, Loader2, Search, X } from "lucide-react";
 
 import { Button, Input, Label } from "@/components/ui/primitives";
-import { api } from "@/lib/api-client";
+import { api, publicUploadUrl } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 import type { ProductListItem } from "@/types/api";
 
@@ -218,7 +218,7 @@ export function CollectionProductPickerModal({
                                                 </span>
                                                 {row.thumbnail ? (
                                                     <img
-                                                        src={row.thumbnail}
+                                                        src={publicUploadUrl(row.thumbnail)}
                                                         alt=""
                                                         className="size-12 shrink-0 rounded-lg border border-[var(--border)] object-cover"
                                                     />

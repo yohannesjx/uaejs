@@ -6,7 +6,7 @@ import { useQuery } from "@tanstack/react-query";
 import { ArrowLeftRight, ChevronDown, ChevronRight } from "lucide-react";
 import { PageHeader } from "@/components/dashboard-blocks";
 import { Button, Card, CardContent } from "@/components/ui/primitives";
-import { api } from "@/lib/api-client";
+import { api, publicUploadUrl } from "@/lib/api-client";
 
 const badgeTone: Record<string, string> = {
     draft: "bg-[var(--muted)] text-[var(--foreground)]",
@@ -204,7 +204,7 @@ function TransferItemsPreview({
                         {productThumbByID.get(group.productID) ? (
                             // eslint-disable-next-line @next/next/no-img-element
                             <img
-                                src={productThumbByID.get(group.productID) || ""}
+                                src={publicUploadUrl(productThumbByID.get(group.productID) || "")}
                                 alt={group.product}
                                 className="h-9 w-9 rounded-md object-cover"
                             />

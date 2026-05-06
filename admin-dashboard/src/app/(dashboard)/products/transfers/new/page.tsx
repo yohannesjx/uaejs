@@ -7,7 +7,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Search, X } from "lucide-react";
 import { PageHeader } from "@/components/dashboard-blocks";
 import { Button, Card, CardContent, CardHeader, CardTitle, Input } from "@/components/ui/primitives";
-import { api } from "@/lib/api-client";
+import { api, publicUploadUrl } from "@/lib/api-client";
 
 type DraftItem = {
     variant_id: string;
@@ -176,7 +176,7 @@ export default function CreateTransferPage() {
                                                         <div className="flex items-center gap-2">
                                                             {it.thumbnail ? (
                                                                 // eslint-disable-next-line @next/next/no-img-element
-                                                                <img src={it.thumbnail} alt={it.product_name} className="h-8 w-8 rounded-md object-cover" />
+                                                                <img src={publicUploadUrl(it.thumbnail)} alt={it.product_name} className="h-8 w-8 rounded-md object-cover" />
                                                             ) : (
                                                                 <div className="h-8 w-8 rounded-md bg-[var(--muted)]" />
                                                             )}
@@ -310,7 +310,7 @@ export default function CreateTransferPage() {
                                                                 <div className="flex items-center gap-2">
                                                                     {thumb ? (
                                                                         // eslint-disable-next-line @next/next/no-img-element
-                                                                        <img src={thumb} alt={row.product_name} className="h-8 w-8 rounded-md object-cover" />
+                                                                        <img src={publicUploadUrl(thumb)} alt={row.product_name} className="h-8 w-8 rounded-md object-cover" />
                                                                     ) : (
                                                                         <div className="h-8 w-8 rounded-md bg-[var(--muted)]" />
                                                                     )}

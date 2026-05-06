@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -72,11 +73,22 @@ func main() {
 		SlackWebhookEngineering: os.Getenv("SLACK_WEBHOOK_ENGINEERING"),
 	}, log)
 
-	// ── Storage ───────────────────────────────────────────────────────────────
-	localStore, err := storage.NewLocalStore("./storage/uploads", "http://localhost:8080/uploads")
+	// ── Storage (PUBLIC_API_ORIGIN / UPLOAD_BASE_URL = browser-reachable API URLs for files)
+	uploadBase := strings.TrimSpace(os.Getenv("UPLOAD_BASE_URL"))
+	if uploadBase == "" {
+		if origin := strings.TrimSpace(os.Getenv("PUBLIC_API_ORIGIN")); origin != "" {
+			uploadBase = strings.TrimSuffix(origin, "/") + "/uploads"
+		} else {
+			uploadBase = fmt.Sprintf("http://127.0.0.1:%d/uploads", cfg.Port)
+		}
+	} else {
+		uploadBase = strings.TrimSuffix(uploadBase, "/")
+	}
+	localStore, err := storage.NewLocalStore("./storage/uploads", uploadBase)
 	if err != nil {
 		log.Fatal("failed to initialize local store", zap.Error(err))
 	}
+	log.Info("local uploads public base", zap.String("uploadBase", uploadBase))
 
 	// ── Repositories ──────────────────────────────────────────────────────────
 	repos := postgres.NewRepositories(db)

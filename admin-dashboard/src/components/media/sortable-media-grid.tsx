@@ -3,6 +3,7 @@
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, rectSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import { publicUploadUrl } from '@/lib/api-client';
 import { MediaAsset } from '@/types/api';
 import { X } from 'lucide-react';
 
@@ -53,7 +54,7 @@ function SortableItem({ item, onRemove }: { item: MediaAsset; onRemove: (id: str
 
     return (
         <div ref={setNodeRef} style={style} {...attributes} {...listeners} className={`relative group aspect-square overflow-hidden rounded-lg border border-[var(--border)] cursor-grab bg-[var(--muted)] ${isDragging ? "opacity-50 ring-2 ring-[var(--primary)]" : "hover:border-[var(--primary)]"}`}>
-            <img src={item.url} alt={item.alt || ""} className="h-full w-full object-cover" draggable={false} />
+            <img src={publicUploadUrl(item.url)} alt={item.alt || ""} className="h-full w-full object-cover" draggable={false} />
             <button
                 type="button"
                 onClick={(e) => { e.stopPropagation(); onRemove(item.id); }}

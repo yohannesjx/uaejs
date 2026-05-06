@@ -5,6 +5,7 @@ import { Plus, X, GripVertical, ChevronDown, ChevronUp, Image as ImageIcon } fro
 import Barcode from "react-barcode";
 import { Button, Input, Label } from "@/components/ui/primitives";
 import type { ProductOption, ProductVariantDraft, MediaAsset } from "@/types/api";
+import { publicUploadUrl } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 import { MediaLibraryModal } from "@/components/media/media-library-modal";
 import {
@@ -454,7 +455,7 @@ export function VariantBuilder({
                                                             {groupVariants[0]?.media && groupVariants[0].media.length > 0 ? (
                                                                 <div className="flex w-full h-full p-0.5 gap-0.5 flex-wrap content-start">
                                                                      {groupVariants[0].media.slice(0, 4).map((m, i) => (
-                                                                         <img key={m.id} src={m.url} alt="" className={cn("object-cover rounded-sm", groupVariants[0].media!.length === 1 ? "w-full h-full" : "w-[calc(50%-2px)] h-[calc(50%-2px)]")} />
+                                                                         <img key={m.id} src={publicUploadUrl(m.url)} alt="" className={cn("object-cover rounded-sm", groupVariants[0].media!.length === 1 ? "w-full h-full" : "w-[calc(50%-2px)] h-[calc(50%-2px)]")} />
                                                                      ))}
                                                                      {groupVariants[0].media.length > 4 && (
                                                                          <div className="absolute inset-0 bg-black/40 flex items-center justify-center text-[10px] text-white font-bold">
@@ -514,7 +515,7 @@ export function VariantBuilder({
                                                                         {v.media && v.media.length > 0 ? (
                                                                             <div className="flex w-full h-full p-0.5 gap-0.5 flex-wrap content-start">
                                                                                 {v.media.slice(0, 4).map((m, i) => (
-                                                                                    <img key={m.id} src={m.url} alt="" className={cn("object-cover rounded-sm", v.media!.length === 1 ? "w-full h-full" : "w-[calc(50%-2px)] h-[calc(50%-2px)]")} />
+                                                                                    <img key={m.id} src={publicUploadUrl(m.url)} alt="" className={cn("object-cover rounded-sm", v.media!.length === 1 ? "w-full h-full" : "w-[calc(50%-2px)] h-[calc(50%-2px)]")} />
                                                                                 ))}
                                                                                 {v.media.length > 4 && (
                                                                                     <div className="absolute inset-0 bg-black/40 flex items-center justify-center text-[8px] text-white font-bold">

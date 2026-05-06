@@ -7,7 +7,7 @@ import { Search, Image as ImageIcon, CheckCircle2, Loader2, UploadCloud, FileVid
 import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Input, Button } from "@/components/ui/primitives";
-import { api } from "@/lib/api-client";
+import { api, publicUploadUrl } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 import type { MediaAsset } from "@/types/api";
 
@@ -296,7 +296,7 @@ export function MediaLibraryModal({
                                                                     </div>
                                                                 ) : (
                                                                     <img
-                                                                        src={asset.url}
+                                                                        src={publicUploadUrl(asset.url)}
                                                                         alt={asset.alt || ""}
                                                                         className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
                                                                         loading="lazy"
@@ -380,9 +380,9 @@ function MediaSidebar({ asset, onUpdate }: { asset: MediaAsset; onUpdate: (a: Me
             </div>
             <div className="p-6 break-words">
                 {asset.mime_type.startsWith("video/") ? (
-                    <video src={asset.url} controls className="w-full rounded-xl bg-black aspect-video object-contain" />
+                    <video src={publicUploadUrl(asset.url)} controls className="w-full rounded-xl bg-black aspect-video object-contain" />
                 ) : (
-                    <img src={asset.url} alt={asset.alt} className="w-full rounded-xl bg-[var(--muted)] object-contain aspect-square" />
+                    <img src={publicUploadUrl(asset.url)} alt={asset.alt} className="w-full rounded-xl bg-[var(--muted)] object-contain aspect-square" />
                 )}
 
                 <div className="mt-6 space-y-4">

@@ -78,8 +78,21 @@ function getApiBaseUrl(): string {
     return `http://localhost:${process.env.NEXT_PUBLIC_API_PORT ?? "8080"}`;
   }
 
-  if (fromEnv) return fromEnv;
-  return `http://localhost:${process.env.NEXT_PUBLIC_API_PORT ?? "8080"}`;
+	if (fromEnv) return fromEnv;
+	return `http://localhost:${process.env.NEXT_PUBLIC_API_PORT ?? "8080"}`;
+}
+
+/**
+ * Media/upload URLs stored in the DB often use http://localhost:8080/uploads/...
+ * (server default). Browsers refuse to load loopback from a public dashboard
+ * (Private Network Access). Rewrites to the same API origin as API calls.
+ */
+export function publicUploadUrl(stored: string | null | undefined): string {
+	if (stored == null || stored === "") return "";
+	const raw = String(stored).trim();
+	const idx = raw.indexOf("/uploads/");
+	if (idx === -1) return raw;
+	return `${getApiBaseUrl()}${raw.slice(idx)}`;
 }
 
 export class ApiError extends Error {

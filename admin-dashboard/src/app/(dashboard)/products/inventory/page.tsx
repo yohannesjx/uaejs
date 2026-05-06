@@ -3,7 +3,7 @@
 import { Fragment, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { BarChart2, ArrowRightLeft, ChevronDown, ChevronRight } from "lucide-react";
-import { api } from "@/lib/api-client";
+import { api, publicUploadUrl } from "@/lib/api-client";
 import { PageHeader } from "@/components/dashboard-blocks";
 import Link from "next/link";
 import { Button, Card, CardContent, Input, Label } from "@/components/ui/primitives";
@@ -256,7 +256,7 @@ export default function ProductsInventoryPage() {
                                                         <div className="flex items-center gap-2">
                                                             {productThumbByID.get(group.productID) ? (
                                                                 // eslint-disable-next-line @next/next/no-img-element
-                                                                <img src={productThumbByID.get(group.productID) || ""} alt={group.productName} className="h-9 w-9 rounded-md object-cover" />
+                                                                <img src={publicUploadUrl(productThumbByID.get(group.productID) || "")} alt={group.productName} className="h-9 w-9 rounded-md object-cover" />
                                                             ) : (
                                                                 <div className="h-9 w-9 rounded-md bg-[var(--muted)]" />
                                                             )}

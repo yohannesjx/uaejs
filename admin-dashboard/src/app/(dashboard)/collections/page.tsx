@@ -6,7 +6,7 @@ import { ImageIcon, Layers, Pencil, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge, Button } from "@/components/ui/primitives";
-import { api } from "@/lib/api-client";
+import { api, publicUploadUrl } from "@/lib/api-client";
 
 export default function CollectionsPage() {
     const queryClient = useQueryClient();
@@ -80,7 +80,7 @@ export default function CollectionsPage() {
                                 >
                                     {c.image_url ? (
                                         <img
-                                            src={c.image_url}
+                                            src={publicUploadUrl(c.image_url)}
                                             alt=""
                                             className="size-14 shrink-0 rounded-lg border border-[var(--border)] object-cover sm:size-16"
                                         />

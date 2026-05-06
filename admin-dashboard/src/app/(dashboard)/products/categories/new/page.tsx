@@ -11,7 +11,7 @@ import { Button, Card, CardContent, CardHeader, CardTitle, Input, Label, Badge }
 import { RichTextEditor } from "@/components/products/rich-text-editor";
 import { SlugInput } from "@/components/products/slug-input";
 import { MediaLibraryModal } from "@/components/media/media-library-modal";
-import { api } from "@/lib/api-client";
+import { api, publicUploadUrl } from "@/lib/api-client";
 import type { MediaAsset, ProductCategory, SmartCollectionCondition, ProductListItem } from "@/types/api";
 
 function useDebounce<T>(value: T, delay: number): T {
@@ -351,7 +351,7 @@ export default function NewCategoryPage() {
                                 <div className="space-y-4">
                                     <div className="aspect-[4/3] w-full overflow-hidden rounded-lg border border-[var(--border)]">
                                         <img
-                                            src={media[0].url}
+                                            src={publicUploadUrl(media[0].url)}
                                             alt={media[0].alt || "Category Media"}
                                             className="h-full w-full object-cover"
                                         />

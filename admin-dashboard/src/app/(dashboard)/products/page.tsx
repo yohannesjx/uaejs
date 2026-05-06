@@ -13,7 +13,7 @@ import {
   Input,
 } from "@/components/ui/primitives";
 import { MediaLibraryModal } from "@/components/media/media-library-modal";
-import { api } from "@/lib/api-client";
+import { api, publicUploadUrl } from "@/lib/api-client";
 import { formatCurrency } from "@/lib/utils";
 import type { InventoryListItem, MediaAsset, ProductCategory } from "@/types/api";
 
@@ -451,10 +451,10 @@ export default function ProductsPage() {
                                 {row.thumbnail ? (
                                   <>
                                     <img
-                                      src={row.thumbnail}
+                                      src={publicUploadUrl(row.thumbnail)}
                                       alt={row.name}
                                       className="size-10 rounded-md border border-[var(--border)] object-cover bg-[var(--muted)]"
-                                      onMouseEnter={() => setHoverThumb(row.thumbnail || null)}
+                                      onMouseEnter={() => setHoverThumb(publicUploadUrl(row.thumbnail) || null)}
                                       onMouseLeave={() => setHoverThumb(null)}
                                     />
                                   </>
@@ -618,10 +618,10 @@ export default function ProductsPage() {
                                         }}
                                       >
                                         <img
-                                          src={v.image_url}
+                                          src={publicUploadUrl(v.image_url)}
                                           alt={v.sku}
                                           className="size-8 rounded-md border border-[var(--border)] object-cover bg-[var(--muted)]"
-                                          onMouseEnter={() => setHoverThumb(v.image_url || null)}
+                                          onMouseEnter={() => setHoverThumb(publicUploadUrl(v.image_url) || null)}
                                           onMouseLeave={() => setHoverThumb(null)}
                                         />
                                       </button>

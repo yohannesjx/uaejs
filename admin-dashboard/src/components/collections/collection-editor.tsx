@@ -11,7 +11,7 @@ import { Button, Badge, Card, CardContent, CardHeader, CardTitle, Input, Label }
 import { SlugInput } from "@/components/products/slug-input";
 import { MediaLibraryModal } from "@/components/media/media-library-modal";
 import { CollectionProductPickerModal } from "@/components/collections/collection-product-picker-modal";
-import { api } from "@/lib/api-client";
+import { api, publicUploadUrl } from "@/lib/api-client";
 import type { MediaAsset, ProductCollection, ProductListItem } from "@/types/api";
 
 type CollectionEditorProps = {
@@ -201,7 +201,7 @@ export function CollectionEditor({ collectionId }: CollectionEditorProps) {
                         <CardContent className="space-y-4 pt-5">
                             <div className="relative aspect-[21/9] w-full overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--muted)]/30">
                                 {media[0] ? (
-                                    <img src={media[0].url} alt="" className="size-full object-cover" />
+                                    <img src={publicUploadUrl(media[0].url)} alt="" className="size-full object-cover" />
                                 ) : (
                                     <div className="flex size-full flex-col items-center justify-center gap-2 text-[var(--muted-foreground)]">
                                         <ImageIcon className="size-10 opacity-60" />
@@ -302,7 +302,7 @@ export function CollectionEditor({ collectionId }: CollectionEditorProps) {
                                         >
                                             {p.thumbnail ? (
                                                 <img
-                                                    src={p.thumbnail}
+                                                    src={publicUploadUrl(p.thumbnail)}
                                                     alt=""
                                                     className="size-11 shrink-0 rounded-lg border border-[var(--border)] object-cover"
                                                 />
