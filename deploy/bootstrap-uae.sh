@@ -38,6 +38,9 @@ fi
 echo ">>> Building and starting stack (docker compose)..."
 docker compose up -d --build
 
+echo ">>> If this Postgres volume was created before newer ./migrations were added, apply them once:"
+echo ">>>   bash deploy/apply-migrations-existing-db.sh"
+
 echo ">>> Done. API: http://<server-ip>:8080  Admin (prod): http://<server-ip>:3000  Storefront: http://<server-ip>:5173  Grafana: :3001"
 echo ">>> Add to CORS_ALLOWED_ORIGINS: http://<server-ip>:3000 and http://<server-ip>:5173 (comma-separated)."
 echo ">>> Ensure firewall allows required ports or put nginx/Caddy in front with TLS."

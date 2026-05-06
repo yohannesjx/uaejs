@@ -1,4 +1,4 @@
--- +goose Up
+-- Media library for admin uploads (referenced by products / variants).
 CREATE TABLE IF NOT EXISTS media_assets (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     tenant_id UUID NOT NULL,
@@ -11,6 +11,3 @@ CREATE TABLE IF NOT EXISTS media_assets (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-
--- +goose Down
-DROP TABLE IF EXISTS media_assets;
