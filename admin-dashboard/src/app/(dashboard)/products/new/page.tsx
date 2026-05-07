@@ -68,7 +68,7 @@ const initialFormValues = {
     variants: [],
     seoTitle: "",
     seoDescription: "",
-    status: "draft" as ProductStatus,
+    status: "active" as ProductStatus,
     tags: [],
 };
 
@@ -628,7 +628,7 @@ export default function NewProductPage() {
                     {/* ── RIGHT COLUMN ── */}
                     <div className="space-y-4">
                         <ProductStatusPanel
-                            status={formVals.status || "draft"}
+                            status={formVals.status || "active"}
                             onStatusChange={(v) => setValue("status", v as ProductStatus, { shouldDirty: true })}
                             tags={formVals.tags || []}
                             onTagsChange={(v) => setValue("tags", v, { shouldDirty: true })}
