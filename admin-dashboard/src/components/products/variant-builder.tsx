@@ -312,6 +312,16 @@ export function VariantBuilder({
         onVariantsChange(next);
     };
 
+    const updateGroupCost = (groupName: string, costVal: string) => {
+        const next = variants.map(v => {
+            if (v.options[actualGroupBy] === groupName || (!actualGroupBy && groupName === "All")) {
+                return { ...v, cost: costVal };
+            }
+            return v;
+        });
+        onVariantsChange(next);
+    };
+
     const addOption = () => {
         const unused = PRESET_OPTIONS.find(
             (p) => !options.some((o) => o.name === p),
@@ -342,7 +352,7 @@ export function VariantBuilder({
                     sku: existing?.sku || nextSku(),
                     barcode: existing?.barcode,
                     price: existing?.price || basePrice || "0.00",
-                    sale_price: existing?.sale_price || baseSalePrice || "",
+                    sale_price: existing?.sale_price ?? (baseSalePrice && baseSalePrice.trim() !== "" ? baseSalePrice : "") ?? "",
                     cost: existing?.cost ?? (baseCost && baseCost.trim() !== "" ? baseCost : undefined) ?? "",
                     weight_g: existing?.weight_g,
                     quantity: existing?.quantity || 0,
@@ -407,9 +417,13 @@ export function VariantBuilder({
                                         value={actualGroupBy}
                                         onChange={(e) => setGroupByOption(e.target.value)}
                                     >
-                                        {options.map(o => (
-                                            o.name && <option key={o.name} value={o.name}>{o.name}</option>
-                                        ))}
+                                        {options
+                                            .filter((o) => o.name)
+                                            .map((o) => (
+                                                <option key={o.name} value={o.name}>
+                                                    {o.name}
+                                                </option>
+                                            ))}
                                     </select>
                                     <div className="ml-auto">
                                         <button
@@ -424,158 +438,239 @@ export function VariantBuilder({
                                 </div>
                             )}
 
-                            <div className="flex items-center p-3 border-b text-xs font-semibold text-[var(--muted-foreground)] bg-[var(--muted)]/10">
-                                <span className="w-8"></span> {/* Checkbox space */}
-                                <span className="flex-1 min-w-[200px]">Variant</span>
-                                <span className="w-24 text-right pr-2">Price</span>
-                                <span className="w-24 text-right pr-2">Sale Price</span>
-                                <span className="w-20 text-right pr-4">Quantity</span>
-                                <span className="w-32 pr-2">SKU</span>
+                            <div className="flex items-center gap-2 border-b px-2 py-2 text-[10px] font-semibold uppercase tracking-wide text-[var(--muted-foreground)] bg-[var(--muted)]/10">
+                                <span className="w-6 shrink-0" aria-hidden />
+                                <span className="min-w-0 flex-1 max-w-[10rem] sm:max-w-[14rem]">Variant</span>
+                                <span className="w-[4.25rem] shrink-0 text-right">Price</span>
+                                <span className="w-[4.25rem] shrink-0 text-right">Sale</span>
+                                <span className="w-12 shrink-0 text-right">Qty</span>
+                                <span className="w-[6.5rem] shrink-0">SKU</span>
+                                <span className="w-[4.25rem] shrink-0 text-right">Cost</span>
                             </div>
 
                             <div className="divide-y divide-[var(--border)]">
                                 {Object.entries(groupedVariants).map(([groupName, groupVariants]) => {
-                                    const isExpanded = expandedGroups[groupName];
-                                    const firstVariantMedia = groupVariants[0]?.media?.[0];
+                                    const isExpanded = expandedGroups[groupName] !== false;
+                                    const compact = groupVariants.length === 1;
+
+                                    if (compact) {
+                                        const v = groupVariants[0];
+                                        const isOutOfStock = (v.quantity || 0) <= 0;
+                                        const optionLabel =
+                                            !actualGroupBy || groupName === "All"
+                                                ? Object.entries(v.options)
+                                                      .map(([, val]) => val)
+                                                      .filter(Boolean)
+                                                      .join(" · ") || "Variant"
+                                                : String(groupName);
+                                        return (
+                                            <div
+                                                key={groupName}
+                                                className={cn(
+                                                    "flex flex-wrap items-center gap-x-1 gap-y-1 border-b border-[var(--border)] px-2 py-1.5 hover:bg-[var(--muted)]/15",
+                                                    isOutOfStock && "bg-[var(--muted)]/25 opacity-70",
+                                                )}
+                                            >
+                                                <div className="flex w-6 shrink-0 justify-center">
+                                                    <input type="checkbox" className="rounded border-[var(--border)] text-[var(--primary)] focus:ring-[var(--primary)]" />
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setMediaTarget({ type: "variant", index: v._index });
+                                                        setMediaModalOpen(true);
+                                                    }}
+                                                    className="size-8 shrink-0 overflow-hidden rounded border border-dashed border-[var(--border)] bg-[var(--panel)] hover:border-[var(--primary)] hover:bg-[var(--primary)]/5"
+                                                >
+                                                    {v.media && v.media.length > 0 ? (
+                                                        // eslint-disable-next-line @next/next/no-img-element
+                                                        <img src={publicUploadUrl(v.media[0].url)} alt="" className="size-full object-cover" />
+                                                    ) : (
+                                                        <ImageIcon className="mx-auto size-3.5 text-[var(--muted-foreground)]" />
+                                                    )}
+                                                </button>
+                                                <div className="min-w-0 max-w-[10rem] shrink-0 sm:max-w-[14rem]">
+                                                    <span className="block truncate text-xs font-medium">{optionLabel}</span>
+                                                </div>
+                                                <div className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-x-1 sm:justify-start">
+                                                    <Input
+                                                        className="h-7 w-[4.25rem] shrink-0 px-1 text-right text-xs"
+                                                        value={v.price}
+                                                        placeholder="0"
+                                                        onChange={(e) => updateVariant(v._index, { price: e.target.value })}
+                                                    />
+                                                    <Input
+                                                        className="h-7 w-[4.25rem] shrink-0 px-1 text-right text-xs"
+                                                        value={v.sale_price || ""}
+                                                        placeholder="Sale"
+                                                        onChange={(e) => updateVariant(v._index, { sale_price: e.target.value })}
+                                                    />
+                                                    <Input
+                                                        className="h-7 w-12 shrink-0 px-1 text-right text-xs"
+                                                        type="number"
+                                                        min="0"
+                                                        value={v.quantity ?? ""}
+                                                        onChange={(e) => updateVariant(v._index, { quantity: parseInt(e.target.value, 10) || 0 })}
+                                                    />
+                                                    <Input
+                                                        className="h-7 w-[6.5rem] shrink-0 px-1 text-xs"
+                                                        value={v.sku}
+                                                        onChange={(e) => updateVariant(v._index, { sku: e.target.value })}
+                                                    />
+                                                    <Input
+                                                        className="h-7 w-[4.25rem] shrink-0 px-1 text-right text-xs"
+                                                        value={v.cost ?? ""}
+                                                        placeholder="Cost"
+                                                        onChange={(e) => updateVariant(v._index, { cost: e.target.value })}
+                                                    />
+                                                </div>
+                                                {isOutOfStock && (
+                                                    <span className="rounded-full bg-rose-100 px-1.5 py-0.5 text-[9px] font-bold uppercase text-rose-700">
+                                                        Out
+                                                    </span>
+                                                )}
+                                            </div>
+                                        );
+                                    }
 
                                     return (
                                         <div key={groupName} className="flex flex-col">
-                                            {/* Parent Row */}
                                             {actualGroupBy && (
-                                                <div className="flex items-center p-3 hover:bg-[var(--muted)]/20 transition-colors">
-                                                    <div className="w-8 flex items-center justify-center">
+                                                <div className="flex items-center gap-2 px-2 py-2 hover:bg-[var(--muted)]/20">
+                                                    <div className="flex w-6 shrink-0 justify-center">
                                                         <input type="checkbox" className="rounded border-[var(--border)] text-[var(--primary)] focus:ring-[var(--primary)]" />
                                                     </div>
-                                                    <div className="flex-1 flex items-center gap-4 min-w-[200px]">
+                                                    <div className="flex min-w-0 flex-1 items-center gap-2 max-w-[14rem]">
                                                         <button
                                                             type="button"
-                                                            onClick={() => { setMediaTarget({ type: 'group', groupName }); setMediaModalOpen(true); }}
-                                                            className="size-11 shrink-0 rounded-md border border-dashed border-[var(--border)] hover:border-[var(--primary)] hover:bg-[var(--primary)]/5 flex items-center justify-center transition-all overflow-hidden bg-[var(--panel)] text-[var(--foreground)] relative group"
+                                                            onClick={() => {
+                                                                setMediaTarget({ type: "group", groupName });
+                                                                setMediaModalOpen(true);
+                                                            }}
+                                                            className="size-9 shrink-0 overflow-hidden rounded border border-dashed border-[var(--border)] bg-[var(--panel)] hover:border-[var(--primary)]"
                                                         >
                                                             {groupVariants[0]?.media && groupVariants[0].media.length > 0 ? (
-                                                                <div className="flex w-full h-full p-0.5 gap-0.5 flex-wrap content-start">
-                                                                     {groupVariants[0].media.slice(0, 4).map((m, i) => (
-                                                                         <img key={m.id} src={publicUploadUrl(m.url)} alt="" className={cn("object-cover rounded-sm", groupVariants[0].media!.length === 1 ? "w-full h-full" : "w-[calc(50%-2px)] h-[calc(50%-2px)]")} />
-                                                                     ))}
-                                                                     {groupVariants[0].media.length > 4 && (
-                                                                         <div className="absolute inset-0 bg-black/40 flex items-center justify-center text-[10px] text-white font-bold">
-                                                                             +{groupVariants[0].media.length - 4}
-                                                                         </div>
-                                                                     )}
-                                                                </div>
+                                                                // eslint-disable-next-line @next/next/no-img-element
+                                                                <img
+                                                                    src={publicUploadUrl(groupVariants[0].media![0].url)}
+                                                                    alt=""
+                                                                    className="size-full object-cover"
+                                                                />
                                                             ) : (
-                                                                <ImageIcon className="size-4 text-[var(--muted-foreground)]" />
+                                                                <ImageIcon className="mx-auto size-3.5 text-[var(--muted-foreground)]" />
                                                             )}
                                                         </button>
-                                                        <div className="flex flex-col">
-                                                            <span className="font-semibold text-sm">{groupName}</span>
-                                                            <button type="button" onClick={() => toggleGroup(groupName)} className="flex items-center gap-1 text-xs text-[var(--muted-foreground)] hover:text-foreground hover:underline">
+                                                        <div className="min-w-0">
+                                                            <span className="block truncate text-xs font-semibold">{groupName}</span>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => toggleGroup(groupName)}
+                                                                className="text-[10px] text-[var(--muted-foreground)] hover:underline"
+                                                            >
                                                                 {groupVariants.length} variants
-                                                                {isExpanded ? <ChevronUp className="size-3" /> : <ChevronDown className="size-3" />}
+                                                                {isExpanded ? <ChevronUp className="ml-0.5 inline size-3" /> : <ChevronDown className="ml-0.5 inline size-3" />}
                                                             </button>
                                                         </div>
                                                     </div>
-                                                    <div className="w-24 px-1 text-sm">
-                                                        <Input
-                                                            className="h-8 text-right text-xs bg-[var(--panel)] text-[var(--foreground)]"
-                                                            value={groupVariants[0]?.price ?? ""}
-                                                            placeholder="0.00"
-                                                            onChange={(e) => updateGroupPrice(groupName, e.target.value)}
-                                                        />
+                                                    <Input
+                                                        className="h-7 w-[4.25rem] shrink-0 px-1 text-right text-xs"
+                                                        value={groupVariants[0]?.price ?? ""}
+                                                        onChange={(e) => updateGroupPrice(groupName, e.target.value)}
+                                                    />
+                                                    <Input
+                                                        className="h-7 w-[4.25rem] shrink-0 px-1 text-right text-xs"
+                                                        value={groupVariants[0]?.sale_price ?? ""}
+                                                        onChange={(e) => updateGroupSalePrice(groupName, e.target.value)}
+                                                    />
+                                                    <div className="w-12 shrink-0 text-right text-xs font-medium tabular-nums">
+                                                        {groupVariants.reduce((sum, x) => sum + (x.quantity || 0), 0)}
                                                     </div>
-                                                    <div className="w-24 px-1 text-sm">
-                                                        <Input
-                                                            className="h-8 text-right text-xs bg-[var(--panel)] text-[var(--foreground)]"
-                                                            value={groupVariants[0]?.sale_price ?? ""}
-                                                            placeholder="Sale"
-                                                            onChange={(e) => updateGroupSalePrice(groupName, e.target.value)}
-                                                        />
-                                                    </div>
-                                                    <div className="w-20 text-right px-4 text-sm font-medium">{groupVariants.reduce((sum, v) => sum + (v.quantity || 0), 0)}</div>
-                                                    <div className="w-32"></div>
+                                                    <div className="w-[6.5rem] shrink-0" />
+                                                    <Input
+                                                        className="h-7 w-[4.25rem] shrink-0 px-1 text-right text-xs"
+                                                        value={groupVariants[0]?.cost ?? ""}
+                                                        placeholder="Cost"
+                                                        onChange={(e) => updateGroupCost(groupName, e.target.value)}
+                                                    />
                                                 </div>
                                             )}
- 
-                                            {/* Child Rows */}
+
                                             {(!actualGroupBy || isExpanded) && (
-                                                <div className={cn("flex flex-col divide-y divide-[var(--border)]/50", actualGroupBy && "bg-[var(--muted)]/5 border-t border-[var(--border)]")}>
+                                                <div
+                                                    className={cn(
+                                                        "flex flex-col divide-y divide-[var(--border)]/60",
+                                                        actualGroupBy && "bg-[var(--muted)]/5",
+                                                    )}
+                                                >
                                                     {groupVariants.map((v) => {
                                                         const isOutOfStock = (v.quantity || 0) <= 0;
                                                         return (
-                                                            <div key={v._index} className={cn("flex items-center py-2 px-3 hover:bg-[var(--muted)]/20", actualGroupBy && "pl-6", isOutOfStock && "opacity-60 bg-[var(--muted)]/30")}>
-                                                                <div className="w-8 flex items-center justify-center">
-                                                                    <input type="checkbox" className="rounded border-[var(--border)] text-[var(--primary)] focus:ring-[var(--primary)]" />
+                                                            <div
+                                                                key={v._index}
+                                                                className={cn(
+                                                                    "flex items-center gap-2 px-2 py-1.5 hover:bg-[var(--muted)]/15",
+                                                                    actualGroupBy && "pl-4",
+                                                                    isOutOfStock && "bg-[var(--muted)]/20 opacity-70",
+                                                                )}
+                                                            >
+                                                                <div className="flex w-6 shrink-0 justify-center">
+                                                                    <input type="checkbox" className="rounded border-[var(--border)] text-[var(--primary)]" />
                                                                 </div>
-                                                                <div className="flex-1 flex items-center gap-3 min-w-[200px]">
-                                                                    <button
-                                                                        type="button"
-                                                                        onClick={() => { setMediaTarget({ type: 'variant', index: v._index }); setMediaModalOpen(true); }}
-                                                                        className="size-9 shrink-0 rounded-md border border-dashed border-[var(--border)] hover:border-[var(--primary)] hover:bg-[var(--primary)]/5 flex items-center justify-center transition-all overflow-hidden bg-[var(--panel)] text-[var(--foreground)] relative"
-                                                                    >
-                                                                        {v.media && v.media.length > 0 ? (
-                                                                            <div className="flex w-full h-full p-0.5 gap-0.5 flex-wrap content-start">
-                                                                                {v.media.slice(0, 4).map((m, i) => (
-                                                                                    <img key={m.id} src={publicUploadUrl(m.url)} alt="" className={cn("object-cover rounded-sm", v.media!.length === 1 ? "w-full h-full" : "w-[calc(50%-2px)] h-[calc(50%-2px)]")} />
-                                                                                ))}
-                                                                                {v.media.length > 4 && (
-                                                                                    <div className="absolute inset-0 bg-black/40 flex items-center justify-center text-[8px] text-white font-bold">
-                                                                                        +{v.media.length - 4}
-                                                                                    </div>
-                                                                                )}
-                                                                            </div>
-                                                                        ) : (
-                                                                            <ImageIcon className="size-4 text-[var(--muted-foreground)]" />
-                                                                        )}
-                                                                    </button>
-                                                                    <div className="flex flex-wrap gap-1 text-sm">
-                                                                        {Object.entries(v.options).filter(([k]) => k !== actualGroupBy).map(([k, val]) => (
-                                                                            <span key={k} className="px-2 py-0.5 rounded-full bg-[var(--background)] border text-xs">
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => {
+                                                                        setMediaTarget({ type: "variant", index: v._index });
+                                                                        setMediaModalOpen(true);
+                                                                    }}
+                                                                    className="size-8 shrink-0 overflow-hidden rounded border border-dashed border-[var(--border)] bg-[var(--panel)]"
+                                                                >
+                                                                    {v.media && v.media.length > 0 ? (
+                                                                        // eslint-disable-next-line @next/next/no-img-element
+                                                                        <img src={publicUploadUrl(v.media[0].url)} alt="" className="size-full object-cover" />
+                                                                    ) : (
+                                                                        <ImageIcon className="mx-auto size-3.5 text-[var(--muted-foreground)]" />
+                                                                    )}
+                                                                </button>
+                                                                <div className="flex min-w-0 flex-1 max-w-[14rem] flex-wrap gap-1">
+                                                                    {Object.entries(v.options)
+                                                                        .filter(([k]) => k !== actualGroupBy)
+                                                                        .map(([k, val]) => (
+                                                                            <span key={k} className="rounded border bg-[var(--background)] px-1.5 py-0.5 text-[10px]">
                                                                                 {val}
                                                                             </span>
                                                                         ))}
-                                                                        {Object.entries(v.options).length === 1 && actualGroupBy && (
-                                                                            <span className="text-xs text-[var(--muted-foreground)] italic">Default</span>
-                                                                        )}
-                                                                    </div>
                                                                 </div>
-                                                                <div className="w-24 px-1">
-                                                                    <Input
-                                                                        className="h-8 text-right text-xs bg-[var(--panel)] text-[var(--foreground)]"
-                                                                        value={v.price}
-                                                                        placeholder="0.00"
-                                                                        onChange={(e) => updateVariant(v._index, { price: e.target.value })}
-                                                                    />
-                                                                </div>
-                                                                <div className="w-24 px-1">
-                                                                    <Input
-                                                                        className="h-8 text-right text-xs bg-[var(--panel)] text-[var(--foreground)]"
-                                                                        value={v.sale_price || ""}
-                                                                        placeholder="Sale"
-                                                                        onChange={(e) => updateVariant(v._index, { sale_price: e.target.value })}
-                                                                    />
-                                                                </div>
-                                                                <div className="w-20 px-1">
-                                                                    <Input
-                                                                        className="h-8 text-right text-xs bg-[var(--panel)] text-[var(--foreground)]"
-                                                                        type="number"
-                                                                        min="0"
-                                                                        value={v.quantity ?? ""}
-                                                                        placeholder="0"
-                                                                        onChange={(e) => updateVariant(v._index, { quantity: parseInt(e.target.value) || 0 })}
-                                                                    />
-                                                                </div>
-                                                                <div className="w-32 px-1">
-                                                                    <Input
-                                                                        className="h-8 text-xs bg-[var(--panel)] text-[var(--foreground)]"
-                                                                        value={v.sku}
-                                                                        placeholder="SKU"
-                                                                        onChange={(e) => updateVariant(v._index, { sku: e.target.value })}
-                                                                    />
-                                                                </div>
+                                                                <Input
+                                                                    className="h-7 w-[4.25rem] shrink-0 px-1 text-right text-xs"
+                                                                    value={v.price}
+                                                                    onChange={(e) => updateVariant(v._index, { price: e.target.value })}
+                                                                />
+                                                                <Input
+                                                                    className="h-7 w-[4.25rem] shrink-0 px-1 text-right text-xs"
+                                                                    value={v.sale_price || ""}
+                                                                    onChange={(e) => updateVariant(v._index, { sale_price: e.target.value })}
+                                                                />
+                                                                <Input
+                                                                    className="h-7 w-12 shrink-0 px-1 text-right text-xs"
+                                                                    type="number"
+                                                                    min="0"
+                                                                    value={v.quantity ?? ""}
+                                                                    onChange={(e) => updateVariant(v._index, { quantity: parseInt(e.target.value, 10) || 0 })}
+                                                                />
+                                                                <Input
+                                                                    className="h-7 w-[6.5rem] shrink-0 px-1 text-xs"
+                                                                    value={v.sku}
+                                                                    onChange={(e) => updateVariant(v._index, { sku: e.target.value })}
+                                                                />
+                                                                <Input
+                                                                    className="h-7 w-[4.25rem] shrink-0 px-1 text-right text-xs"
+                                                                    value={v.cost ?? ""}
+                                                                    onChange={(e) => updateVariant(v._index, { cost: e.target.value })}
+                                                                />
                                                                 {isOutOfStock && (
-                                                                    <div className="ml-2 rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-rose-700">
-                                                                        X Out
-                                                                    </div>
+                                                                    <span className="rounded-full bg-rose-100 px-1.5 py-0.5 text-[9px] font-bold uppercase text-rose-700">
+                                                                        Out
+                                                                    </span>
                                                                 )}
                                                             </div>
                                                         );

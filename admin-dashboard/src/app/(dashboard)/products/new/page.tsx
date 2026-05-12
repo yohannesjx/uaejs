@@ -101,28 +101,35 @@ export default function NewProductPage() {
 
     // We use useWatch to subscribe to form variations without re-rendering the whole tree unconditionally
     const formVals = useWatch({ control });
+    const prevPricingBase = useRef({ price: "", salePrice: "", cost: "" });
 
+    /** When top-level price / sale / cost changes, apply to every variant (variants can still be edited per row). */
     useEffect(() => {
         const variants = formVals.variants || [];
         if (!Array.isArray(variants) || variants.length === 0) return;
-        const baseRegular = formVals.price || "";
-        const baseSale = formVals.salePrice || "";
+        const price = formVals.price ?? "";
+        const salePrice = formVals.salePrice ?? "";
+        const cost = formVals.cost ?? "";
+        const prev = prevPricingBase.current;
+        const baseChanged = prev.price !== price || prev.salePrice !== salePrice || prev.cost !== cost;
+        prevPricingBase.current = { price, salePrice, cost };
+        if (!baseChanged) return;
 
         const next = variants.map((v: Record<string, unknown>) => ({
             ...v,
-            price: (v.price as string) || baseRegular,
-            sale_price: (v.sale_price as string) || baseSale,
+            price,
+            sale_price: salePrice,
+            cost,
         }));
 
         const changed = next.some((v: Record<string, unknown>, idx: number) => {
-            const current = variants[idx] as Record<string, unknown>;
-            return v.price !== current.price || v.sale_price !== current.sale_price;
+            const cur = variants[idx] as Record<string, unknown>;
+            return v.price !== cur.price || v.sale_price !== cur.sale_price || v.cost !== cur.cost;
         });
-
         if (changed) {
             setValue("variants", next, { shouldDirty: true });
         }
-    }, [formVals.price, formVals.salePrice, formVals.variants, setValue]);
+    }, [formVals.price, formVals.salePrice, formVals.cost, formVals.variants, setValue]);
 
     // 1. Initialize empty draft on mount
     useEffect(() => {

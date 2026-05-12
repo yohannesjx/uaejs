@@ -411,11 +411,33 @@ export default function EditProductPage() {
                             <div className="grid grid-cols-2 gap-3">
                                 <div className="space-y-1.5">
                                     <Label>Regular price (AED)</Label>
-                                    <Input type="number" min="0" step="0.01" placeholder="0.00" value={price} onChange={(e) => setPrice(e.target.value)} />
+                                    <Input
+                                        type="number"
+                                        min="0"
+                                        step="0.01"
+                                        placeholder="0.00"
+                                        value={price}
+                                        onChange={(e) => {
+                                            const v = e.target.value;
+                                            setPrice(v);
+                                            setVariants((prev) => prev.map((row) => ({ ...row, price: v })));
+                                        }}
+                                    />
                                 </div>
                                 <div className="space-y-1.5">
                                     <Label>Sale price (AED)</Label>
-                                    <Input type="number" min="0" step="0.01" placeholder="0.00" value={salePrice} onChange={(e) => setSalePrice(e.target.value)} />
+                                    <Input
+                                        type="number"
+                                        min="0"
+                                        step="0.01"
+                                        placeholder="0.00"
+                                        value={salePrice}
+                                        onChange={(e) => {
+                                            const v = e.target.value;
+                                            setSalePrice(v);
+                                            setVariants((prev) => prev.map((row) => ({ ...row, sale_price: v })));
+                                        }}
+                                    />
                                 </div>
                             </div>
                             <div className="space-y-1.5">
@@ -477,7 +499,16 @@ export default function EditProductPage() {
                         </CardContent>
                     </Card>
 
-                    <VariantBuilder options={options} onOptionsChange={setOptions} variants={variants} onVariantsChange={setVariants} nextSku={generateSku} basePrice={price} baseCost={cost} />
+                    <VariantBuilder
+                        options={options}
+                        onOptionsChange={setOptions}
+                        variants={variants}
+                        onVariantsChange={setVariants}
+                        nextSku={generateSku}
+                        basePrice={price}
+                        baseSalePrice={salePrice}
+                        baseCost={cost}
+                    />
 
                     <SeoSection title={seoTitle} description={seoDescription} urlHandle={slug} onTitleChange={setSeoTitle} onDescriptionChange={setSeoDescription} />
                 </div>
