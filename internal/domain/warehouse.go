@@ -74,6 +74,10 @@ type InventoryListItem struct {
 	Category          string    `json:"category"`
 	WarehouseID       uuid.UUID `json:"warehouse_id"`
 	WarehouseName     string    `json:"warehouse"`
+	// UnitCost is optional per-variant cost (same currency as prices, typically AED).
+	UnitCost *string `json:"unit_cost,omitempty"`
+	// StockValueAtCost is available_quantity * unit_cost (0 if unit_cost unset).
+	StockValueAtCost string `json:"stock_value_at_cost"`
 	AvailableQuantity int       `json:"available_quantity"`
 	ReservedQuantity  int       `json:"reserved_quantity"`
 	IncomingQuantity  int       `json:"incoming_quantity"`

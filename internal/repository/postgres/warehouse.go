@@ -2,8 +2,10 @@ package postgres
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/dubai-retail/os/internal/domain"
@@ -274,6 +276,8 @@ func (r *WarehouseRepository) ListInventoryRows(
 			COALESCE(p.category, '') AS category,
 			w.id AS warehouse_id,
 			w.name AS warehouse_name,
+			v.unit_cost::text AS unit_cost,
+			(ws.qty_available::numeric * COALESCE(v.unit_cost, 0))::text AS stock_value_at_cost,
 			ws.qty_available,
 			ws.qty_reserved,
 			0 AS incoming_quantity
@@ -313,6 +317,7 @@ func (r *WarehouseRepository) ListInventoryRows(
 	items := make([]domain.InventoryListItem, 0)
 	for rows.Next() {
 		var it domain.InventoryListItem
+		var unitCost sql.NullString
 		if err := rows.Scan(
 			&it.ProductID,
 			&it.ProductName,
@@ -322,11 +327,17 @@ func (r *WarehouseRepository) ListInventoryRows(
 			&it.Category,
 			&it.WarehouseID,
 			&it.WarehouseName,
+			&unitCost,
+			&it.StockValueAtCost,
 			&it.AvailableQuantity,
 			&it.ReservedQuantity,
 			&it.IncomingQuantity,
 		); err != nil {
 			return nil, err
+		}
+		if unitCost.Valid && strings.TrimSpace(unitCost.String) != "" {
+			s := strings.TrimSpace(unitCost.String)
+			it.UnitCost = &s
 		}
 		items = append(items, it)
 	}

@@ -62,4 +62,7 @@ var ensureAdminSchemaSQL = []string{
 	`CREATE INDEX IF NOT EXISTS idx_order_items_promotion_id
     ON order_items (promotion_id)
     WHERE promotion_id IS NOT NULL`,
+	// 024 variants.unit_cost (inventory valuation)
+	`ALTER TABLE variants
+    ADD COLUMN IF NOT EXISTS unit_cost NUMERIC(19, 4)`,
 }

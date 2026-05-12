@@ -343,7 +343,7 @@ export function VariantBuilder({
                     barcode: existing?.barcode,
                     price: existing?.price || basePrice || "0.00",
                     sale_price: existing?.sale_price || baseSalePrice || "",
-                    cost: existing?.cost || baseCost || "0.00",
+                    cost: existing?.cost ?? (baseCost && baseCost.trim() !== "" ? baseCost : undefined) ?? "",
                     weight_g: existing?.weight_g,
                     quantity: existing?.quantity || 0,
                     media: existing?.media || [],

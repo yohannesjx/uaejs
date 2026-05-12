@@ -331,6 +331,7 @@ export interface Variant {
   weight_g?: number | null;
   image_url?: string | null;
   media_urls?: string[];
+  cost?: string | null;
   is_active?: boolean;
   created_at?: ISODateTime;
   updated_at?: ISODateTime;
@@ -540,7 +541,8 @@ export interface ProductVariantDraft {
   barcode?: string;
   price: string;
   sale_price?: string;
-  cost: string;
+  /** Unit cost; omit or empty when not set (parent form can fill). */
+  cost?: string;
   weight_g?: number;
   quantity?: number;
   options: Record<string, string>; // e.g. { Size: "M", Color: "Red" }
@@ -579,6 +581,10 @@ export interface InventoryListItem {
   category: string;
   warehouse_id: UUID;
   warehouse: string;
+  /** Per-unit cost when configured on the variant (AED). */
+  unit_cost?: string | null;
+  /** available_quantity × unit_cost (string decimal). */
+  stock_value_at_cost: string;
   available_quantity: number;
   reserved_quantity: number;
   incoming_quantity: number;

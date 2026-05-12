@@ -8,6 +8,11 @@ import { PageHeader } from "@/components/dashboard-blocks";
 import Link from "next/link";
 import { Button, Card, CardContent, Input, Label } from "@/components/ui/primitives";
 
+function formatAedAmount(n: number): string {
+    if (!Number.isFinite(n)) return "0.00";
+    return n.toLocaleString("en-AE", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
 export default function ProductsInventoryPage() {
     const queryClient = useQueryClient();
     const [warehouseId, setWarehouseId] = useState("");
@@ -44,6 +49,22 @@ export default function ProductsInventoryPage() {
         }),
     });
     const rows = inventoryResp?.items ?? [];
+    const warehouseCostTotals = useMemo(() => {
+        const m = new Map<string, { name: string; total: number }>();
+        for (const r of rows) {
+            const w = r.warehouse_id;
+            const name = r.warehouse;
+            const line = parseFloat(String(r.stock_value_at_cost || "0")) || 0;
+            const prev = m.get(w) ?? { name, total: 0 };
+            prev.total += line;
+            m.set(w, prev);
+        }
+        return Array.from(m.entries()).map(([id, v]) => ({ id, name: v.name, total: v.total }));
+    }, [rows]);
+    const grandStockValueAtCost = useMemo(
+        () => rows.reduce((acc, r) => acc + (parseFloat(String(r.stock_value_at_cost || "0")) || 0), 0),
+        [rows],
+    );
     const { data: productsData } = useQuery({
         queryKey: ["products-for-inventory-thumbs"],
         queryFn: () => api.listProducts({ page: 1, page_size: 500 }),
@@ -117,6 +138,10 @@ export default function ProductsInventoryPage() {
         return Array.from(map.entries()).map(([productID, productRows]) => {
             const first = productRows[0];
             const totalAvailable = productRows.reduce((acc, curr) => acc + curr.available_quantity, 0);
+            const totalStockValueAtCost = productRows.reduce(
+                (acc, curr) => acc + (parseFloat(String(curr.stock_value_at_cost || "0")) || 0),
+                0,
+            );
             const variantsCount = new Set(productRows.map((x) => x.variant_id)).size;
             const warehousesCount = new Set(productRows.map((x) => x.warehouse_id)).size;
             return {
@@ -125,6 +150,7 @@ export default function ProductsInventoryPage() {
                 variantsCount,
                 warehousesCount,
                 totalAvailable,
+                totalStockValueAtCost,
                 rows: productRows,
                 variantRows: Array.from(
                     productRows.reduce((variantMap, row) => {
@@ -138,10 +164,14 @@ export default function ProductsInventoryPage() {
                             product_id: row.product_id,
                             warehouses: [] as Array<{ id: string; name: string }>,
                             actionRow: row,
+                            unit_cost: row.unit_cost as string | null | undefined,
+                            line_stock_value: 0,
                         };
                         current.available_quantity += row.available_quantity;
                         current.reserved_quantity += row.reserved_quantity;
                         current.incoming_quantity += row.incoming_quantity;
+                        current.line_stock_value += parseFloat(String(row.stock_value_at_cost || "0")) || 0;
+                        if (!current.unit_cost && row.unit_cost) current.unit_cost = row.unit_cost;
                         if (!current.warehouses.some((w) => w.id === row.warehouse_id)) {
                             current.warehouses.push({ id: row.warehouse_id, name: row.warehouse });
                         }
@@ -157,6 +187,8 @@ export default function ProductsInventoryPage() {
                         product_id: string;
                         warehouses: Array<{ id: string; name: string }>;
                         actionRow: typeof productRows[number];
+                        unit_cost?: string | null;
+                        line_stock_value: number;
                     }>())
                 ).map(([, v]) => v),
             };
@@ -216,6 +248,27 @@ export default function ProductsInventoryPage() {
                         </CardContent>
                     </Card>
                     <Card>
+                        <CardContent className="flex flex-col gap-3 pt-5 md:flex-row md:flex-wrap md:items-center md:justify-between">
+                            <div>
+                                <div className="text-xs font-semibold uppercase tracking-wider text-[var(--muted-foreground)]">Inventory value at unit cost</div>
+                                <div className="text-2xl font-semibold tabular-nums">{formatAedAmount(grandStockValueAtCost)} AED</div>
+                                <p className="text-xs text-[var(--muted-foreground)]">Sum of (available × unit cost) for rows in the table below.</p>
+                            </div>
+                            <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm">
+                                {warehouseCostTotals.length === 0 ? (
+                                    <span className="text-[var(--muted-foreground)]">No cost data (set unit cost on each variant in the product editor).</span>
+                                ) : (
+                                    warehouseCostTotals.map((w) => (
+                                        <div key={w.id} className="min-w-[140px]">
+                                            <div className="text-xs text-[var(--muted-foreground)]">{w.name}</div>
+                                            <div className="font-medium tabular-nums">{formatAedAmount(w.total)} AED</div>
+                                        </div>
+                                    ))
+                                )}
+                            </div>
+                        </CardContent>
+                    </Card>
+                    <Card>
                         <CardContent className="overflow-x-auto pt-5">
                             <table className="min-w-full text-sm">
                                 <thead className="text-left text-xs text-[var(--muted-foreground)]">
@@ -225,14 +278,15 @@ export default function ProductsInventoryPage() {
                                         <th className="pb-2">Variants</th>
                                         <th className="pb-2">Locations</th>
                                         <th className="pb-2">Total Available</th>
+                                        <th className="pb-2 text-right">Value at cost</th>
                                         <th className="pb-2">Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {isLoading ? (
-                                        <tr><td colSpan={6} className="py-6 text-center text-[var(--muted-foreground)]">Loading inventory...</td></tr>
+                                        <tr><td colSpan={7} className="py-6 text-center text-[var(--muted-foreground)]">Loading inventory...</td></tr>
                                     ) : groupedProducts.length === 0 ? (
-                                        <tr><td colSpan={6} className="py-6 text-center text-[var(--muted-foreground)]">No inventory rows found.</td></tr>
+                                        <tr><td colSpan={7} className="py-6 text-center text-[var(--muted-foreground)]">No inventory rows found.</td></tr>
                                     ) : groupedProducts.map((group) => {
                                         const expanded = expandedProductIDs.includes(group.productID);
                                         return (
@@ -272,11 +326,14 @@ export default function ProductsInventoryPage() {
                                                             {group.totalAvailable}
                                                         </span>
                                                     </td>
+                                                    <td className="py-3 text-right tabular-nums text-[var(--muted-foreground)]">
+                                                        {formatAedAmount(group.totalStockValueAtCost)} AED
+                                                    </td>
                                                     <td className="py-3 text-xs text-[var(--muted-foreground)]">Expand to manage variants</td>
                                                 </tr>
                                                 {expanded ? (
                                                     <tr className="border-t border-[var(--border)] bg-[var(--muted)]/20">
-                                                        <td colSpan={6} className="p-3">
+                                                        <td colSpan={7} className="p-3">
                                                             <table className="min-w-full text-sm">
                                                                 <thead className="text-left text-xs text-[var(--muted-foreground)]">
                                                                     <tr>
@@ -286,6 +343,8 @@ export default function ProductsInventoryPage() {
                                                                         <th className="pb-2">Available</th>
                                                                         <th className="pb-2">Reserved</th>
                                                                         <th className="pb-2">Incoming</th>
+                                                                        <th className="pb-2 text-right">Unit cost</th>
+                                                                        <th className="pb-2 text-right">Stock value</th>
                                                                         <th className="pb-2">Actions</th>
                                                                     </tr>
                                                                 </thead>
@@ -316,6 +375,14 @@ export default function ProductsInventoryPage() {
                                                                             </td>
                                                                             <td className="py-2">{row.reserved_quantity}</td>
                                                                             <td className="py-2 text-slate-400">{row.incoming_quantity}</td>
+                                                                            <td className="py-2 text-right tabular-nums text-xs text-[var(--muted-foreground)]">
+                                                                                {row.unit_cost != null && String(row.unit_cost).trim() !== ""
+                                                                                    ? `${formatAedAmount(parseFloat(String(row.unit_cost)) || 0)} AED`
+                                                                                    : "—"}
+                                                                            </td>
+                                                                            <td className="py-2 text-right tabular-nums text-xs">
+                                                                                {formatAedAmount(row.line_stock_value)} AED
+                                                                            </td>
                                                                             <td className="py-2">
                                                                                 <div className="flex gap-2">
                                                                                     <Button size="sm" variant="outline" onClick={() => { setSelectedVariant(row.actionRow); setAdjustOpen(true); }}>Edit</Button>

@@ -502,6 +502,7 @@ export const api = {
           media_urls: (v.media ?? []).map((m) => m.url).filter(Boolean),
           price: v.price,
           sale_price: v.sale_price,
+          cost: v.cost,
           quantity: v.quantity,
         })),
       }),
@@ -533,10 +534,11 @@ export const api = {
       sku: string;
       color?: string;
       size?: string;
-      image_url?: string;
+      image_url?: string | null;
       media_urls?: string[];
       price?: string;
       sale_price?: string;
+      cost?: string;
       quantity?: number;
     },
   ) =>
@@ -551,10 +553,11 @@ export const api = {
       sku: string;
       color?: string;
       size?: string;
-      image_url?: string;
+      image_url?: string | null;
       media_urls?: string[];
       price?: string;
       sale_price?: string;
+      cost?: string;
       quantity?: number;
     },
   ) =>

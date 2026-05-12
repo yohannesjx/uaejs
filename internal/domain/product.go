@@ -52,6 +52,8 @@ type Variant struct {
 	Size      *string   `db:"size"       json:"size,omitempty"`
 	WeightG   *float64  `db:"weight_g"   json:"weight_g,omitempty"`
 	ImageURL  *string   `db:"image_url"  json:"image_url,omitempty"`
+	// UnitCost is optional COGS input (admin); persisted as variants.unit_cost.
+	Cost      *string   `db:"unit_cost"  json:"cost,omitempty"`
 	Price     *string   `db:"price"      json:"price,omitempty"`
 	SalePrice *string   `db:"sale_price" json:"sale_price,omitempty"`
 	Quantity  *int      `db:"quantity"   json:"quantity,omitempty"`

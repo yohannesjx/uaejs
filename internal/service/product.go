@@ -61,6 +61,7 @@ type VariantInput struct {
 	SalePrice *string  `json:"sale_price,omitempty"`
 	Quantity  *int     `json:"quantity,omitempty"`
 	MediaURLs []string `json:"media_urls,omitempty"`
+	Cost      *string  `json:"cost,omitempty"`
 }
 
 // CreateProductInput is the request payload for the CreateProductWithVariants service method.
@@ -109,6 +110,7 @@ type UpsertVariantInput struct {
 	SalePrice *string  `json:"sale_price,omitempty"`
 	Quantity  *int     `json:"quantity,omitempty"`
 	MediaURLs []string `json:"media_urls,omitempty"`
+	Cost      *string  `json:"cost,omitempty"`
 }
 
 // CreateProductResult is returned after a successful product creation.
@@ -364,6 +366,11 @@ func (s *ProductService) CreateProductWithVariants(
 			IsActive:  true,
 			MediaURLs: normalizeMediaURLs(vi.MediaURLs),
 		}
+		costPtr, err := normalizeVariantUnitCost(vi.Cost)
+		if err != nil {
+			return nil, fmt.Errorf("CreateProductWithVariants: invalid cost for %v: %w", variant.SKU, err)
+		}
+		variant.Cost = costPtr
 
 		if err := s.repo.InsertVariant(ctx, tx, variant); err != nil {
 			if isUniqueViolation(err) {
@@ -607,6 +614,11 @@ func (s *ProductService) UpsertDefaultVariantForProduct(ctx context.Context, pro
 			IsActive:  true,
 			MediaURLs: normalizeMediaURLs(input.MediaURLs),
 		}
+		costPtr, err := normalizeVariantUnitCost(input.Cost)
+		if err != nil {
+			return nil, fmt.Errorf("UpsertDefaultVariantForProduct invalid cost: %w", err)
+		}
+		v.Cost = costPtr
 		if err := s.repo.InsertVariant(ctx, tx, v); err != nil {
 			return nil, fmt.Errorf("UpsertDefaultVariantForProduct insert: %w", err)
 		}
@@ -633,6 +645,11 @@ func (s *ProductService) UpsertDefaultVariantForProduct(ctx context.Context, pro
 	if input.ImageURL != nil {
 		v.ImageURL = input.ImageURL
 	}
+	costPtr, err := normalizeVariantUnitCost(input.Cost)
+	if err != nil {
+		return nil, fmt.Errorf("UpsertDefaultVariantForProduct invalid cost: %w", err)
+	}
+	v.Cost = costPtr
 	v.MediaURLs = normalizeMediaURLs(input.MediaURLs)
 
 	if err := s.repo.UpdateVariant(ctx, tx, v); err != nil {
@@ -676,6 +693,11 @@ func (s *ProductService) CreateVariantForProduct(ctx context.Context, productID 
 		IsActive:  true,
 		MediaURLs: normalizeMediaURLs(input.MediaURLs),
 	}
+	costPtr, err := normalizeVariantUnitCost(input.Cost)
+	if err != nil {
+		return nil, fmt.Errorf("CreateVariantForProduct invalid cost: %w", err)
+	}
+	v.Cost = costPtr
 	if err := s.repo.InsertVariant(ctx, tx, v); err != nil {
 		return nil, fmt.Errorf("CreateVariantForProduct insert: %w", err)
 	}
@@ -765,6 +787,11 @@ func (s *ProductService) UpdateVariant(ctx context.Context, variantID uuid.UUID,
 	existing.Color = input.Color
 	existing.Size = input.Size
 	existing.ImageURL = input.ImageURL
+	costPtr, err := normalizeVariantUnitCost(input.Cost)
+	if err != nil {
+		return fmt.Errorf("UpdateVariant cost: %w", err)
+	}
+	existing.Cost = costPtr
 	existing.MediaURLs = normalizeMediaURLs(input.MediaURLs)
 	if err := s.repo.UpdateVariant(ctx, tx, existing); err != nil {
 		return fmt.Errorf("UpdateVariant persist: %w", err)
@@ -994,8 +1021,16 @@ func (s *ProductService) DuplicateProduct(ctx context.Context, productID uuid.UU
 			ImageURL:  v.ImageURL,
 			IsActive:  true,
 		}
+		if v.Cost != nil {
+			c := *v.Cost
+			nv.Cost = &c
+		}
 		if err := s.repo.InsertVariant(ctx, tx, nv); err != nil {
 			return nil, fmt.Errorf("DuplicateProduct insert variant: %w", err)
+		}
+		mediaURLs := normalizeMediaURLs(v.MediaURLs)
+		if err := s.repo.ReplaceVariantMedia(ctx, tx, nv.ID, mediaURLs); err != nil {
+			return nil, fmt.Errorf("DuplicateProduct variant media: %w", err)
 		}
 		if err := s.repo.InitInventory(ctx, tx, nv.ID); err != nil {
 			return nil, fmt.Errorf("DuplicateProduct init inventory: %w", err)
@@ -1011,6 +1046,20 @@ func (s *ProductService) DuplicateProduct(ctx context.Context, productID uuid.UU
 // =============================================================================
 // Helpers
 // =============================================================================
+
+func normalizeVariantUnitCost(cost *string) (*string, error) {
+	if cost == nil {
+		return nil, nil
+	}
+	raw := strings.TrimSpace(*cost)
+	if raw == "" {
+		return nil, nil
+	}
+	if _, err := decimal.NewFromString(raw); err != nil {
+		return nil, fmt.Errorf("invalid cost: %w", err)
+	}
+	return &raw, nil
+}
 
 func validateCreateProductInput(input CreateProductInput) error {
 	if strings.TrimSpace(input.Name) == "" {

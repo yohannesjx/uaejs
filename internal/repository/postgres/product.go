@@ -137,13 +137,13 @@ func (r *ProductRepository) InsertVariant(ctx context.Context, tx pgx.Tx, v *dom
 	const q = `
 		INSERT INTO variants
 		    (id, product_id, sku, barcode, color, size, weight_g,
-		     image_url, is_active, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,
+		     image_url, unit_cost, is_active, created_at, updated_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,
 		        NOW() AT TIME ZONE 'UTC', NOW() AT TIME ZONE 'UTC')`
 
 	_, err := tx.Exec(ctx, q,
 		v.ID, v.ProductID, v.SKU, v.Barcode, v.Color,
-		v.Size, v.WeightG, v.ImageURL, v.IsActive,
+		v.Size, v.WeightG, v.ImageURL, v.Cost, v.IsActive,
 	)
 	if err != nil {
 		return fmt.Errorf("InsertVariant(%s, sku=%v): %w", v.ID, v.SKU, err)
@@ -155,17 +155,22 @@ func (r *ProductRepository) InsertVariant(ctx context.Context, tx pgx.Tx, v *dom
 func (r *ProductRepository) GetVariantBySKU(ctx context.Context, sku string) (*domain.Variant, error) {
 	const q = `
 		SELECT v.id, v.product_id, v.sku, v.barcode, v.color, v.size,
-		       v.weight_g, v.image_url, v.is_active, v.created_at, v.updated_at
+		       v.weight_g, v.image_url, v.unit_cost::text, v.is_active, v.created_at, v.updated_at
 		  FROM variants v
 		 WHERE v.sku = $1`
 
 	v := &domain.Variant{}
+	var unitCost sql.NullString
 	err := r.pool.QueryRow(ctx, q, sku).Scan(
 		&v.ID, &v.ProductID, &v.SKU, &v.Barcode, &v.Color, &v.Size,
-		&v.WeightG, &v.ImageURL, &v.IsActive, &v.CreatedAt, &v.UpdatedAt,
+		&v.WeightG, &v.ImageURL, &unitCost, &v.IsActive, &v.CreatedAt, &v.UpdatedAt,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("GetVariantBySKU(%s): %w", sku, err)
+	}
+	if unitCost.Valid && strings.TrimSpace(unitCost.String) != "" {
+		s := strings.TrimSpace(unitCost.String)
+		v.Cost = &s
 	}
 
 	// Load media
@@ -188,17 +193,22 @@ func (r *ProductRepository) GetVariantBySKU(ctx context.Context, sku string) (*d
 func (r *ProductRepository) GetVariantByID(ctx context.Context, id uuid.UUID) (*domain.Variant, error) {
 	const q = `
 		SELECT id, product_id, sku, barcode, color, size,
-		       weight_g, image_url, is_active, created_at, updated_at
+		       weight_g, image_url, unit_cost::text, is_active, created_at, updated_at
 		  FROM variants
 		 WHERE id = $1`
 
 	v := &domain.Variant{}
+	var unitCost sql.NullString
 	err := r.pool.QueryRow(ctx, q, id).Scan(
 		&v.ID, &v.ProductID, &v.SKU, &v.Barcode, &v.Color, &v.Size,
-		&v.WeightG, &v.ImageURL, &v.IsActive, &v.CreatedAt, &v.UpdatedAt,
+		&v.WeightG, &v.ImageURL, &unitCost, &v.IsActive, &v.CreatedAt, &v.UpdatedAt,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("GetVariantByID(%s): %w", id, err)
+	}
+	if unitCost.Valid && strings.TrimSpace(unitCost.String) != "" {
+		s := strings.TrimSpace(unitCost.String)
+		v.Cost = &s
 	}
 
 	// Load media
@@ -222,6 +232,7 @@ func (r *ProductRepository) ListVariantsByProduct(ctx context.Context, productID
 	const q = `
 		SELECT id, product_id, sku, barcode, color, size,
 		       weight_g, image_url,
+		       variants.unit_cost::text AS unit_cost,
 		       (
 		           SELECT cp.price::text
 		           FROM channel_prices cp
@@ -265,12 +276,17 @@ func (r *ProductRepository) ListVariantsByProduct(ctx context.Context, productID
 		v := &domain.Variant{}
 		var price sql.NullString
 		var salePrice sql.NullString
+		var unitCost sql.NullString
 		var qty int
 		if err := rows.Scan(
 			&v.ID, &v.ProductID, &v.SKU, &v.Barcode, &v.Color, &v.Size,
-			&v.WeightG, &v.ImageURL, &price, &salePrice, &qty, &v.IsActive, &v.CreatedAt, &v.UpdatedAt,
+			&v.WeightG, &v.ImageURL, &unitCost, &price, &salePrice, &qty, &v.IsActive, &v.CreatedAt, &v.UpdatedAt,
 		); err != nil {
 			return nil, err
+		}
+		if unitCost.Valid && strings.TrimSpace(unitCost.String) != "" {
+			s := strings.TrimSpace(unitCost.String)
+			v.Cost = &s
 		}
 		if price.Valid {
 			val := price.String
@@ -360,9 +376,10 @@ func (r *ProductRepository) UpdateVariant(ctx context.Context, tx pgx.Tx, v *dom
 		       color = $3,
 		       size = $4,
 		       image_url = $5,
+		       unit_cost = $6::numeric,
 		       updated_at = NOW() AT TIME ZONE 'UTC'
 		 WHERE id = $1`
-	_, err := tx.Exec(ctx, q, v.ID, v.SKU, v.Color, v.Size, v.ImageURL)
+	_, err := tx.Exec(ctx, q, v.ID, v.SKU, v.Color, v.Size, v.ImageURL, v.Cost)
 	if err != nil {
 		return fmt.Errorf("UpdateVariant(%s): %w", v.ID, err)
 	}

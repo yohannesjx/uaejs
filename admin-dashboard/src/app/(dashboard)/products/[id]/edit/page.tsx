@@ -64,11 +64,18 @@ export default function EditProductPage() {
     const [adjustReason, setAdjustReason] = useState("");
     const [transferTo, setTransferTo] = useState("");
     const [transferQty, setTransferQty] = useState("0");
-    const [media, setMedia] = useState<MediaAsset[]>([]);
     const [hydratedSnapshotKey, setHydratedSnapshotKey] = useState<string | null>(null);
     const [isSaving, setIsSaving] = useState(false);
     const optionOrderStorageKey = `product-option-order:${params.id}`;
     const variantMediaStorageKey = `product-variant-media:${params.id}`;
+
+    const heroMedia = useMemo(() => variants[0]?.media ?? [], [variants]);
+    const setHeroMedia = useCallback((items: MediaAsset[]) => {
+        setVariants((prev) => {
+            if (!prev.length) return prev;
+            return [{ ...prev[0], media: items }, ...prev.slice(1)];
+        });
+    }, []);
 
     // Populate from fetched product
     useEffect(() => {
@@ -120,16 +127,24 @@ export default function EditProductPage() {
                     sort_order: idx,
                 } as MediaAsset));
                 const mergedMedia = [
-                    ...persistedMedia,
                     ...backendMedia,
+                    ...persistedMedia.filter(
+                        (m) => m?.url && !backendMedia.some((b) => b.url === m.url),
+                    ),
                 ].filter((m, idx, arr) => m?.url && arr.findIndex((x) => x.url === m.url) === idx);
+                const rawCost = v.cost ?? (v as Record<string, unknown>).unit_cost;
+                let costStr: string | undefined;
+                if (rawCost != null && String(rawCost).trim() !== "") {
+                    const n = parseFloat(String(rawCost));
+                    if (!isNaN(n)) costStr = n.toFixed(2);
+                }
                 return {
                 id: String(v.id || ""),
                 sku: String(v.sku || generateSku()),
                 barcode: v.barcode ? String(v.barcode) : undefined,
                 price: !isNaN(parseFloat(String(v.price))) ? parseFloat(String(v.price)).toFixed(2) : "0.00",
                 sale_price: v.sale_price && !isNaN(parseFloat(String(v.sale_price))) ? parseFloat(String(v.sale_price)).toFixed(2) : undefined,
-                cost: !isNaN(parseFloat(String(v.cost))) ? parseFloat(String(v.cost)).toFixed(2) : "0.00",
+                cost: costStr,
                 weight_g: typeof v.weight_g === "number" ? v.weight_g : undefined,
                 quantity: typeof v.quantity === "number" ? v.quantity : 0,
                 options: {
@@ -171,26 +186,11 @@ export default function EditProductPage() {
             }
             setOptions(hydratedOptions);
 
-            // Hydrate parent media from any unique variant image URLs
-            const mediaByUrl = new Map<string, MediaAsset>();
-            rawVariants.forEach((v) => {
-                const imageUrl = typeof v.image_url === "string" ? v.image_url : "";
-                if (!imageUrl || mediaByUrl.has(imageUrl)) return;
-                mediaByUrl.set(imageUrl, {
-                    id: String(v.id || crypto.randomUUID()),
-                    url: imageUrl,
-                    mime_type: "image/*",
-                    sort_order: 0,
-                } as MediaAsset);
-            });
-            const hydratedMedia = Array.from(mediaByUrl.values());
-            setMedia(hydratedMedia);
-
             // Hydrate top-level pricing/quantity from first variant for convenience
             if (hydratedVariants.length > 0) {
                 setPrice(hydratedVariants[0].price || "");
                 setSalePrice(hydratedVariants[0].sale_price || "");
-                setCost(hydratedVariants[0].cost || "");
+                setCost(hydratedVariants[0].cost ?? "");
                 setQuantity(String(hydratedVariants[0].quantity ?? 0));
             } else {
                 setPrice("");
@@ -284,14 +284,21 @@ export default function EditProductPage() {
 
             for (const variant of variants) {
                 const normalizedSku = (variant.sku || generateSku()).trim().toUpperCase();
+                const firstUrl = variant.media?.[0]?.url;
                 const payload = {
                     sku: normalizedSku,
                     color: variant.options?.Color || undefined,
                     size: variant.options?.Size || undefined,
-                    image_url: variant.media?.[0]?.url,
+                    image_url: firstUrl != null && firstUrl !== "" ? firstUrl : null,
                     media_urls: (variant.media ?? []).map((m) => m.url).filter(Boolean),
                     price: variant.price || undefined,
                     sale_price: variant.sale_price || undefined,
+                    cost: (() => {
+                        const row = String(variant.cost ?? "").trim();
+                        if (row !== "") return row;
+                        const top = String(cost ?? "").trim();
+                        return top !== "" ? top : undefined;
+                    })(),
                     quantity: typeof variant.quantity === "number" ? variant.quantity : 0,
                 };
                 if (!payload.sku) continue;
@@ -330,7 +337,7 @@ export default function EditProductPage() {
         } finally {
             setIsSaving(false);
         }
-    }, [title, slug, description, status, categoryId, categoryName, collectionIds, tags, seoTitle, seoDescription, weight, mutation, existing?.variants, variants, params.id, queryClient, optionOrderStorageKey, options, variantMediaStorageKey]);
+    }, [title, slug, description, status, categoryId, categoryName, collectionIds, tags, seoTitle, seoDescription, weight, mutation, existing?.variants, variants, cost, params.id, queryClient, optionOrderStorageKey, options, variantMediaStorageKey]);
 
     useEffect(() => {
         const handler = (e: KeyboardEvent) => {
@@ -390,10 +397,10 @@ export default function EditProductPage() {
                     <Card>
                         <CardHeader><CardTitle>Media</CardTitle></CardHeader>
                         <CardContent>
-                            <SortableMediaGrid items={media} onChange={setMedia} />
+                            <SortableMediaGrid items={heroMedia} onChange={setHeroMedia} />
                             <Button variant="outline" type="button" onClick={() => setMediaOpen(true)}>
                                 <ImagePlus className="size-4" />
-                                {media.length === 0 ? "Add media" : "Manage media"}
+                                {heroMedia.length === 0 ? "Add media" : "Manage media"}
                             </Button>
                         </CardContent>
                     </Card>
@@ -413,7 +420,11 @@ export default function EditProductPage() {
                             </div>
                             <div className="space-y-1.5">
                                 <Label>Cost per item (AED)</Label>
-                                <Input type="number" min="0" step="0.01" placeholder="0.00" value={cost} onChange={(e) => setCost(e.target.value)} />
+                                <Input type="number" min="0" step="0.01" placeholder="0.00" value={cost} onChange={(e) => {
+                                    const v = e.target.value;
+                                    setCost(v);
+                                    setVariants((prev) => prev.map((row) => ({ ...row, cost: v })));
+                                }} />
                             </div>
                             <label className="flex cursor-pointer items-center gap-2 text-sm">
                                 <input type="checkbox" checked={chargeTax} onChange={(e) => setChargeTax(e.target.checked)} className="accent-[var(--primary)]" />
@@ -513,7 +524,7 @@ export default function EditProductPage() {
                 </div>
             </div>
 
-            <MediaLibraryModal open={mediaOpen} onOpenChange={setMediaOpen} value={media} onChange={setMedia} />
+            <MediaLibraryModal open={mediaOpen} onOpenChange={setMediaOpen} value={heroMedia} onChange={setHeroMedia} />
             {manageInventoryOpen && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
                     <Card className="w-full max-w-4xl">
