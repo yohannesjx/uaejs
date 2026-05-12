@@ -48,6 +48,15 @@ function pickVariantSku(existing: ProductVariantDraft | undefined, nextSku: () =
     return nextSku();
 }
 
+/** True when the stored price string parses to zero (e.g. "0", "0.00", "00.0"). */
+function isZeroLikePrice(s: string | undefined): boolean {
+    if (s == null) return true;
+    const t = String(s).trim();
+    if (t === "") return true;
+    const n = Number.parseFloat(t.replace(/,/g, ""));
+    return Number.isFinite(n) && n === 0;
+}
+
 function generateMatrix(options: ProductOption[]): Record<string, string>[] {
     const active = options.filter((o) => o.name && o.values.length > 0);
     if (active.length === 0) return [];
@@ -202,6 +211,8 @@ export function VariantBuilder({
     const [mediaTarget, setMediaTarget] = useState<{ type: 'group', groupName: string } | { type: 'variant', index: number } | null>(null);
     /** While a variant qty field is focused, keyed by variant index — empty string when quantity was 0 so the field shows blank until blur. */
     const [qtyBufferByIndex, setQtyBufferByIndex] = useState<Record<number, string>>({});
+    /** Same pattern for price: blank on focus when value is zero-like (e.g. 0.00). */
+    const [priceBufferByIndex, setPriceBufferByIndex] = useState<Record<number, string>>({});
 
     const sensors = useSensors(
         useSensor(PointerSensor),
@@ -530,9 +541,33 @@ export function VariantBuilder({
                                                 </div>
                                                 <Input
                                                     className="h-7 w-full min-w-0 px-1 text-right text-xs tabular-nums"
-                                                    value={v.price}
-                                                    placeholder="0"
-                                                    onChange={(e) => updateVariant(v._index, { price: e.target.value })}
+                                                    type="text"
+                                                    inputMode="decimal"
+                                                    autoComplete="off"
+                                                    value={
+                                                        priceBufferByIndex[v._index] !== undefined
+                                                            ? priceBufferByIndex[v._index]
+                                                            : v.price
+                                                    }
+                                                    onFocus={() => {
+                                                        setPriceBufferByIndex((prev) => ({
+                                                            ...prev,
+                                                            [v._index]: isZeroLikePrice(v.price) ? "" : v.price,
+                                                        }));
+                                                    }}
+                                                    onBlur={() => {
+                                                        setPriceBufferByIndex((prev) => {
+                                                            if (!(v._index in prev)) return prev;
+                                                            const next = { ...prev };
+                                                            delete next[v._index];
+                                                            return next;
+                                                        });
+                                                    }}
+                                                    onChange={(e) => {
+                                                        const raw = e.target.value;
+                                                        setPriceBufferByIndex((prev) => ({ ...prev, [v._index]: raw }));
+                                                        updateVariant(v._index, { price: raw });
+                                                    }}
                                                 />
                                                 <Input
                                                     className="h-7 w-full min-w-0 px-1 text-right text-xs tabular-nums"
@@ -712,8 +747,36 @@ export function VariantBuilder({
                                                                 </div>
                                                                 <Input
                                                                     className="h-7 w-full min-w-0 px-1 text-right text-xs tabular-nums"
-                                                                    value={v.price}
-                                                                    onChange={(e) => updateVariant(v._index, { price: e.target.value })}
+                                                                    type="text"
+                                                                    inputMode="decimal"
+                                                                    autoComplete="off"
+                                                                    value={
+                                                                        priceBufferByIndex[v._index] !== undefined
+                                                                            ? priceBufferByIndex[v._index]
+                                                                            : v.price
+                                                                    }
+                                                                    onFocus={() => {
+                                                                        setPriceBufferByIndex((prev) => ({
+                                                                            ...prev,
+                                                                            [v._index]: isZeroLikePrice(v.price) ? "" : v.price,
+                                                                        }));
+                                                                    }}
+                                                                    onBlur={() => {
+                                                                        setPriceBufferByIndex((prev) => {
+                                                                            if (!(v._index in prev)) return prev;
+                                                                            const next = { ...prev };
+                                                                            delete next[v._index];
+                                                                            return next;
+                                                                        });
+                                                                    }}
+                                                                    onChange={(e) => {
+                                                                        const raw = e.target.value;
+                                                                        setPriceBufferByIndex((prev) => ({
+                                                                            ...prev,
+                                                                            [v._index]: raw,
+                                                                        }));
+                                                                        updateVariant(v._index, { price: raw });
+                                                                    }}
                                                                 />
                                                                 <Input
                                                                     className="h-7 w-full min-w-0 px-1 text-right text-xs tabular-nums"
