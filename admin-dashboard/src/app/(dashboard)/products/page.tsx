@@ -214,12 +214,45 @@ export default function ProductsPage() {
       productId: string;
       sku?: string;
       imageUrl: string;
-    }) =>
-      api.upsertDefaultVariant(productId, {
+    }) => {
+      await api.upsertDefaultVariant(productId, {
         sku: sku && sku.trim() ? sku : `SKU-${productId.slice(0, 8).toUpperCase()}`,
         image_url: imageUrl,
-      }),
-    onSuccess: () => {
+      });
+      const detail = await api.getProduct(productId);
+      const rawVariants = (detail.variants ?? []) as Record<string, unknown>[];
+      await Promise.all(
+        rawVariants
+          .filter((v) => v.id)
+          .map((v) =>
+            api.patchVariant(String(v.id), {
+              sku: String(v.sku ?? ""),
+              color: v.color ? String(v.color) : undefined,
+              size: v.size ? String(v.size) : undefined,
+              image_url: imageUrl,
+              media_urls: [imageUrl],
+              price: v.price != null ? String(v.price) : undefined,
+              sale_price: v.sale_price != null ? String(v.sale_price) : undefined,
+              quantity:
+                typeof v.quantity === "number"
+                  ? v.quantity
+                  : v.quantity != null && String(v.quantity).trim() !== ""
+                    ? Number(v.quantity)
+                    : undefined,
+            }),
+          ),
+      );
+    },
+    onSuccess: (_data, variables) => {
+      const { productId, imageUrl } = variables;
+      setVariantEdits((prev) => {
+        const list = prev[productId];
+        if (!list) return prev;
+        return {
+          ...prev,
+          [productId]: list.map((v) => ({ ...v, image_url: imageUrl })),
+        };
+      });
       queryClient.invalidateQueries({ queryKey: ["products"] });
       queryClient.invalidateQueries({ queryKey: ["products-list-expanded-details"] });
     },

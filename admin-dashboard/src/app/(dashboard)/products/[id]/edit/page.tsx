@@ -70,10 +70,11 @@ export default function EditProductPage() {
     const variantMediaStorageKey = `product-variant-media:${params.id}`;
 
     const heroMedia = useMemo(() => variants[0]?.media ?? [], [variants]);
+    /** Product media is shared: apply the same gallery to every variant (variant rows can still be edited afterward). */
     const setHeroMedia = useCallback((items: MediaAsset[]) => {
         setVariants((prev) => {
             if (!prev.length) return prev;
-            return [{ ...prev[0], media: items }, ...prev.slice(1)];
+            return prev.map((v) => ({ ...v, media: items }));
         });
     }, []);
 

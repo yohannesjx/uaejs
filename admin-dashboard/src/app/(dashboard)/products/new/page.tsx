@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { useForm, useWatch, FormProvider } from "react-hook-form";
@@ -130,6 +130,25 @@ export default function NewProductPage() {
             setValue("variants", next, { shouldDirty: true });
         }
     }, [formVals.price, formVals.salePrice, formVals.cost, formVals.variants, setValue]);
+
+    const productMediaKey = useMemo(() => media.map((m, i) => `${i}:${m.id ?? ""}:${m.url}`).join("\0"), [media]);
+    const variantsLen = Array.isArray(formVals.variants) ? formVals.variants.length : 0;
+
+    /** When product-level media changes (or variant matrix appears), copy that gallery onto every variant for save/API parity with edit product. */
+    useEffect(() => {
+        const rows = getValues("variants") as Array<Record<string, unknown>>;
+        if (!Array.isArray(rows) || rows.length === 0) return;
+        const inherited = media.map((m, i) => ({ ...m, sort_order: i }));
+        const next = rows.map((v) => ({ ...v, media: inherited }));
+        const changed = next.some((v, idx) => {
+            const cur = rows[idx];
+            const a = (cur.media as MediaAsset[]) || [];
+            const b = (v.media as MediaAsset[]) || [];
+            if (a.length !== b.length) return true;
+            return a.some((item, i) => item?.url !== b[i]?.url);
+        });
+        if (changed) setValue("variants", next, { shouldDirty: true });
+    }, [productMediaKey, variantsLen, media, getValues, setValue]);
 
     // 1. Initialize empty draft on mount
     useEffect(() => {
