@@ -2,7 +2,6 @@
 
 import { useState, useCallback, useMemo, useEffect } from "react";
 import { Plus, X, GripVertical, ChevronDown, ChevronUp, Image as ImageIcon } from "lucide-react";
-import Barcode from "react-barcode";
 import { Button, Input, Label } from "@/components/ui/primitives";
 import type { ProductOption, ProductVariantDraft, MediaAsset } from "@/types/api";
 import { publicUploadUrl } from "@/lib/api-client";
@@ -38,6 +37,16 @@ interface VariantBuilderProps {
 }
 
 const PRESET_OPTIONS = ["Size", "Color", "Material", "Style"];
+
+/** Checkbox | thumb | label | price | sale | qty | sku | cost — same template for header + every row */
+const VARIANT_TABLE_GRID =
+    "grid w-full grid-cols-[1.5rem_2rem_minmax(4.5rem,1fr)_4.5rem_4.5rem_2.75rem_6.75rem_4.5rem] items-center gap-x-2 px-2 py-1.5";
+
+function pickVariantSku(existing: ProductVariantDraft | undefined, nextSku: () => string): string {
+    const raw = existing?.sku;
+    if (raw != null && String(raw).trim() !== "") return String(raw).trim();
+    return nextSku();
+}
 
 function generateMatrix(options: ProductOption[]): Record<string, string>[] {
     const active = options.filter((o) => o.name && o.values.length > 0);
@@ -349,7 +358,7 @@ export function VariantBuilder({
                 const existing = variants.find(v => JSON.stringify(v.options) === JSON.stringify(combo)) || variants[i];
                 return {
                     id: existing?.id,
-                    sku: existing?.sku || nextSku(),
+                    sku: pickVariantSku(existing, nextSku),
                     barcode: existing?.barcode,
                     price: existing?.price || basePrice || "0.00",
                     sale_price: existing?.sale_price ?? (baseSalePrice && baseSalePrice.trim() !== "" ? baseSalePrice : "") ?? "",
@@ -368,6 +377,19 @@ export function VariantBuilder({
     const updateVariant = (idx: number, partial: Partial<ProductVariantDraft>) => {
         onVariantsChange(variants.map((v, i) => (i === idx ? { ...v, ...partial } : v)));
     };
+
+    // Ensure every variant has a non-empty SKU (matrix regen / API / sync can leave blanks).
+    useEffect(() => {
+        if (variants.length === 0) return;
+        let needsSku = false;
+        const next = variants.map((v) => {
+            if (v.sku != null && String(v.sku).trim() !== "") return v;
+            needsSku = true;
+            return { ...v, sku: nextSku() };
+        });
+        if (!needsSku) return;
+        onVariantsChange(next);
+    }, [variants, nextSku, onVariantsChange]);
 
     return (
         <div className="rounded-xl border border-[var(--border)] bg-[var(--panel)]">
@@ -438,14 +460,20 @@ export function VariantBuilder({
                                 </div>
                             )}
 
-                            <div className="flex items-center gap-2 border-b px-2 py-2 text-[10px] font-semibold uppercase tracking-wide text-[var(--muted-foreground)] bg-[var(--muted)]/10">
-                                <span className="w-6 shrink-0" aria-hidden />
-                                <span className="min-w-0 flex-1 max-w-[10rem] sm:max-w-[14rem]">Variant</span>
-                                <span className="w-[4.25rem] shrink-0 text-right">Price</span>
-                                <span className="w-[4.25rem] shrink-0 text-right">Sale</span>
-                                <span className="w-12 shrink-0 text-right">Qty</span>
-                                <span className="w-[6.5rem] shrink-0">SKU</span>
-                                <span className="w-[4.25rem] shrink-0 text-right">Cost</span>
+                            <div
+                                className={cn(
+                                    VARIANT_TABLE_GRID,
+                                    "border-b border-[var(--border)] bg-[var(--muted)]/10 py-2 text-[10px] font-semibold uppercase tracking-wide text-[var(--muted-foreground)]",
+                                )}
+                            >
+                                <span className="justify-self-center" aria-hidden />
+                                <span aria-hidden />
+                                <span className="min-w-0">Variant</span>
+                                <span className="text-right">Price</span>
+                                <span className="text-right">Sale</span>
+                                <span className="text-right">Qty</span>
+                                <span>SKU</span>
+                                <span className="text-right">Cost</span>
                             </div>
 
                             <div className="divide-y divide-[var(--border)]">
@@ -467,11 +495,12 @@ export function VariantBuilder({
                                             <div
                                                 key={groupName}
                                                 className={cn(
-                                                    "flex flex-wrap items-center gap-x-1 gap-y-1 border-b border-[var(--border)] px-2 py-1.5 hover:bg-[var(--muted)]/15",
+                                                    VARIANT_TABLE_GRID,
+                                                    "border-b border-[var(--border)] hover:bg-[var(--muted)]/15",
                                                     isOutOfStock && "bg-[var(--muted)]/25 opacity-70",
                                                 )}
                                             >
-                                                <div className="flex w-6 shrink-0 justify-center">
+                                                <div className="flex justify-center">
                                                     <input type="checkbox" className="rounded border-[var(--border)] text-[var(--primary)] focus:ring-[var(--primary)]" />
                                                 </div>
                                                 <button
@@ -480,7 +509,7 @@ export function VariantBuilder({
                                                         setMediaTarget({ type: "variant", index: v._index });
                                                         setMediaModalOpen(true);
                                                     }}
-                                                    className="size-8 shrink-0 overflow-hidden rounded border border-dashed border-[var(--border)] bg-[var(--panel)] hover:border-[var(--primary)] hover:bg-[var(--primary)]/5"
+                                                    className="size-8 shrink-0 justify-self-start overflow-hidden rounded border border-dashed border-[var(--border)] bg-[var(--panel)] hover:border-[var(--primary)] hover:bg-[var(--primary)]/5"
                                                 >
                                                     {v.media && v.media.length > 0 ? (
                                                         // eslint-disable-next-line @next/next/no-img-element
@@ -489,46 +518,44 @@ export function VariantBuilder({
                                                         <ImageIcon className="mx-auto size-3.5 text-[var(--muted-foreground)]" />
                                                     )}
                                                 </button>
-                                                <div className="min-w-0 max-w-[10rem] shrink-0 sm:max-w-[14rem]">
-                                                    <span className="block truncate text-xs font-medium">{optionLabel}</span>
+                                                <div className="flex min-w-0 flex-col gap-0.5">
+                                                    <span className="truncate text-xs font-medium">{optionLabel}</span>
+                                                    {isOutOfStock && (
+                                                        <span className="w-fit rounded-full bg-rose-100 px-1.5 py-0.5 text-[9px] font-bold uppercase text-rose-700">
+                                                            Out
+                                                        </span>
+                                                    )}
                                                 </div>
-                                                <div className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-x-1 sm:justify-start">
-                                                    <Input
-                                                        className="h-7 w-[4.25rem] shrink-0 px-1 text-right text-xs"
-                                                        value={v.price}
-                                                        placeholder="0"
-                                                        onChange={(e) => updateVariant(v._index, { price: e.target.value })}
-                                                    />
-                                                    <Input
-                                                        className="h-7 w-[4.25rem] shrink-0 px-1 text-right text-xs"
-                                                        value={v.sale_price || ""}
-                                                        placeholder="Sale"
-                                                        onChange={(e) => updateVariant(v._index, { sale_price: e.target.value })}
-                                                    />
-                                                    <Input
-                                                        className="h-7 w-12 shrink-0 px-1 text-right text-xs"
-                                                        type="number"
-                                                        min="0"
-                                                        value={v.quantity ?? ""}
-                                                        onChange={(e) => updateVariant(v._index, { quantity: parseInt(e.target.value, 10) || 0 })}
-                                                    />
-                                                    <Input
-                                                        className="h-7 w-[6.5rem] shrink-0 px-1 text-xs"
-                                                        value={v.sku}
-                                                        onChange={(e) => updateVariant(v._index, { sku: e.target.value })}
-                                                    />
-                                                    <Input
-                                                        className="h-7 w-[4.25rem] shrink-0 px-1 text-right text-xs"
-                                                        value={v.cost ?? ""}
-                                                        placeholder="Cost"
-                                                        onChange={(e) => updateVariant(v._index, { cost: e.target.value })}
-                                                    />
-                                                </div>
-                                                {isOutOfStock && (
-                                                    <span className="rounded-full bg-rose-100 px-1.5 py-0.5 text-[9px] font-bold uppercase text-rose-700">
-                                                        Out
-                                                    </span>
-                                                )}
+                                                <Input
+                                                    className="h-7 w-full min-w-0 px-1 text-right text-xs tabular-nums"
+                                                    value={v.price}
+                                                    placeholder="0"
+                                                    onChange={(e) => updateVariant(v._index, { price: e.target.value })}
+                                                />
+                                                <Input
+                                                    className="h-7 w-full min-w-0 px-1 text-right text-xs tabular-nums"
+                                                    value={v.sale_price || ""}
+                                                    placeholder="Sale"
+                                                    onChange={(e) => updateVariant(v._index, { sale_price: e.target.value })}
+                                                />
+                                                <Input
+                                                    className="h-7 w-full min-w-0 px-1 text-right text-xs tabular-nums"
+                                                    type="number"
+                                                    min="0"
+                                                    value={v.quantity ?? ""}
+                                                    onChange={(e) => updateVariant(v._index, { quantity: parseInt(e.target.value, 10) || 0 })}
+                                                />
+                                                <Input
+                                                    className="h-7 w-full min-w-0 px-1 font-mono text-[11px]"
+                                                    value={v.sku}
+                                                    onChange={(e) => updateVariant(v._index, { sku: e.target.value })}
+                                                />
+                                                <Input
+                                                    className="h-7 w-full min-w-0 px-1 text-right text-xs tabular-nums"
+                                                    value={v.cost ?? ""}
+                                                    placeholder="Cost"
+                                                    onChange={(e) => updateVariant(v._index, { cost: e.target.value })}
+                                                />
                                             </div>
                                         );
                                     }
@@ -536,58 +563,63 @@ export function VariantBuilder({
                                     return (
                                         <div key={groupName} className="flex flex-col">
                                             {actualGroupBy && (
-                                                <div className="flex items-center gap-2 px-2 py-2 hover:bg-[var(--muted)]/20">
-                                                    <div className="flex w-6 shrink-0 justify-center">
+                                                <div
+                                                    className={cn(
+                                                        VARIANT_TABLE_GRID,
+                                                        "border-b border-[var(--border)] hover:bg-[var(--muted)]/20",
+                                                    )}
+                                                >
+                                                    <div className="flex justify-center">
                                                         <input type="checkbox" className="rounded border-[var(--border)] text-[var(--primary)] focus:ring-[var(--primary)]" />
                                                     </div>
-                                                    <div className="flex min-w-0 flex-1 items-center gap-2 max-w-[14rem]">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setMediaTarget({ type: "group", groupName });
+                                                            setMediaModalOpen(true);
+                                                        }}
+                                                        className="size-9 shrink-0 justify-self-start overflow-hidden rounded border border-dashed border-[var(--border)] bg-[var(--panel)] hover:border-[var(--primary)]"
+                                                    >
+                                                        {groupVariants[0]?.media && groupVariants[0].media.length > 0 ? (
+                                                            // eslint-disable-next-line @next/next/no-img-element
+                                                            <img
+                                                                src={publicUploadUrl(groupVariants[0].media![0].url)}
+                                                                alt=""
+                                                                className="size-full object-cover"
+                                                            />
+                                                        ) : (
+                                                            <ImageIcon className="mx-auto size-3.5 text-[var(--muted-foreground)]" />
+                                                        )}
+                                                    </button>
+                                                    <div className="min-w-0">
+                                                        <span className="block truncate text-xs font-semibold">{groupName}</span>
                                                         <button
                                                             type="button"
-                                                            onClick={() => {
-                                                                setMediaTarget({ type: "group", groupName });
-                                                                setMediaModalOpen(true);
-                                                            }}
-                                                            className="size-9 shrink-0 overflow-hidden rounded border border-dashed border-[var(--border)] bg-[var(--panel)] hover:border-[var(--primary)]"
+                                                            onClick={() => toggleGroup(groupName)}
+                                                            className="text-[10px] text-[var(--muted-foreground)] hover:underline"
                                                         >
-                                                            {groupVariants[0]?.media && groupVariants[0].media.length > 0 ? (
-                                                                // eslint-disable-next-line @next/next/no-img-element
-                                                                <img
-                                                                    src={publicUploadUrl(groupVariants[0].media![0].url)}
-                                                                    alt=""
-                                                                    className="size-full object-cover"
-                                                                />
-                                                            ) : (
-                                                                <ImageIcon className="mx-auto size-3.5 text-[var(--muted-foreground)]" />
-                                                            )}
+                                                            {groupVariants.length} variants
+                                                            {isExpanded ? <ChevronUp className="ml-0.5 inline size-3" /> : <ChevronDown className="ml-0.5 inline size-3" />}
                                                         </button>
-                                                        <div className="min-w-0">
-                                                            <span className="block truncate text-xs font-semibold">{groupName}</span>
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => toggleGroup(groupName)}
-                                                                className="text-[10px] text-[var(--muted-foreground)] hover:underline"
-                                                            >
-                                                                {groupVariants.length} variants
-                                                                {isExpanded ? <ChevronUp className="ml-0.5 inline size-3" /> : <ChevronDown className="ml-0.5 inline size-3" />}
-                                                            </button>
-                                                        </div>
                                                     </div>
                                                     <Input
-                                                        className="h-7 w-[4.25rem] shrink-0 px-1 text-right text-xs"
+                                                        className="h-7 w-full min-w-0 px-1 text-right text-xs tabular-nums"
                                                         value={groupVariants[0]?.price ?? ""}
                                                         onChange={(e) => updateGroupPrice(groupName, e.target.value)}
                                                     />
                                                     <Input
-                                                        className="h-7 w-[4.25rem] shrink-0 px-1 text-right text-xs"
+                                                        className="h-7 w-full min-w-0 px-1 text-right text-xs tabular-nums"
                                                         value={groupVariants[0]?.sale_price ?? ""}
                                                         onChange={(e) => updateGroupSalePrice(groupName, e.target.value)}
                                                     />
-                                                    <div className="w-12 shrink-0 text-right text-xs font-medium tabular-nums">
+                                                    <div className="text-right text-xs font-medium tabular-nums text-[var(--muted-foreground)]">
                                                         {groupVariants.reduce((sum, x) => sum + (x.quantity || 0), 0)}
                                                     </div>
-                                                    <div className="w-[6.5rem] shrink-0" />
+                                                    <div className="truncate text-[10px] text-[var(--muted-foreground)]" title="Per-SKU in rows">
+                                                        —
+                                                    </div>
                                                     <Input
-                                                        className="h-7 w-[4.25rem] shrink-0 px-1 text-right text-xs"
+                                                        className="h-7 w-full min-w-0 px-1 text-right text-xs tabular-nums"
                                                         value={groupVariants[0]?.cost ?? ""}
                                                         placeholder="Cost"
                                                         onChange={(e) => updateGroupCost(groupName, e.target.value)}
@@ -608,12 +640,13 @@ export function VariantBuilder({
                                                             <div
                                                                 key={v._index}
                                                                 className={cn(
-                                                                    "flex items-center gap-2 px-2 py-1.5 hover:bg-[var(--muted)]/15",
-                                                                    actualGroupBy && "pl-4",
+                                                                    VARIANT_TABLE_GRID,
+                                                                    "hover:bg-[var(--muted)]/15",
+                                                                    actualGroupBy && "border-l-2 border-l-[var(--border)]",
                                                                     isOutOfStock && "bg-[var(--muted)]/20 opacity-70",
                                                                 )}
                                                             >
-                                                                <div className="flex w-6 shrink-0 justify-center">
+                                                                <div className="flex justify-center">
                                                                     <input type="checkbox" className="rounded border-[var(--border)] text-[var(--primary)]" />
                                                                 </div>
                                                                 <button
@@ -622,7 +655,7 @@ export function VariantBuilder({
                                                                         setMediaTarget({ type: "variant", index: v._index });
                                                                         setMediaModalOpen(true);
                                                                     }}
-                                                                    className="size-8 shrink-0 overflow-hidden rounded border border-dashed border-[var(--border)] bg-[var(--panel)]"
+                                                                    className="size-8 shrink-0 justify-self-start overflow-hidden rounded border border-dashed border-[var(--border)] bg-[var(--panel)]"
                                                                 >
                                                                     {v.media && v.media.length > 0 ? (
                                                                         // eslint-disable-next-line @next/next/no-img-element
@@ -631,7 +664,7 @@ export function VariantBuilder({
                                                                         <ImageIcon className="mx-auto size-3.5 text-[var(--muted-foreground)]" />
                                                                     )}
                                                                 </button>
-                                                                <div className="flex min-w-0 flex-1 max-w-[14rem] flex-wrap gap-1">
+                                                                <div className="flex min-w-0 flex-wrap gap-1">
                                                                     {Object.entries(v.options)
                                                                         .filter(([k]) => k !== actualGroupBy)
                                                                         .map(([k, val]) => (
@@ -639,39 +672,39 @@ export function VariantBuilder({
                                                                                 {val}
                                                                             </span>
                                                                         ))}
+                                                                    {isOutOfStock && (
+                                                                        <span className="rounded-full bg-rose-100 px-1.5 py-0.5 text-[9px] font-bold uppercase text-rose-700">
+                                                                            Out
+                                                                        </span>
+                                                                    )}
                                                                 </div>
                                                                 <Input
-                                                                    className="h-7 w-[4.25rem] shrink-0 px-1 text-right text-xs"
+                                                                    className="h-7 w-full min-w-0 px-1 text-right text-xs tabular-nums"
                                                                     value={v.price}
                                                                     onChange={(e) => updateVariant(v._index, { price: e.target.value })}
                                                                 />
                                                                 <Input
-                                                                    className="h-7 w-[4.25rem] shrink-0 px-1 text-right text-xs"
+                                                                    className="h-7 w-full min-w-0 px-1 text-right text-xs tabular-nums"
                                                                     value={v.sale_price || ""}
                                                                     onChange={(e) => updateVariant(v._index, { sale_price: e.target.value })}
                                                                 />
                                                                 <Input
-                                                                    className="h-7 w-12 shrink-0 px-1 text-right text-xs"
+                                                                    className="h-7 w-full min-w-0 px-1 text-right text-xs tabular-nums"
                                                                     type="number"
                                                                     min="0"
                                                                     value={v.quantity ?? ""}
                                                                     onChange={(e) => updateVariant(v._index, { quantity: parseInt(e.target.value, 10) || 0 })}
                                                                 />
                                                                 <Input
-                                                                    className="h-7 w-[6.5rem] shrink-0 px-1 text-xs"
+                                                                    className="h-7 w-full min-w-0 px-1 font-mono text-[11px]"
                                                                     value={v.sku}
                                                                     onChange={(e) => updateVariant(v._index, { sku: e.target.value })}
                                                                 />
                                                                 <Input
-                                                                    className="h-7 w-[4.25rem] shrink-0 px-1 text-right text-xs"
+                                                                    className="h-7 w-full min-w-0 px-1 text-right text-xs tabular-nums"
                                                                     value={v.cost ?? ""}
                                                                     onChange={(e) => updateVariant(v._index, { cost: e.target.value })}
                                                                 />
-                                                                {isOutOfStock && (
-                                                                    <span className="rounded-full bg-rose-100 px-1.5 py-0.5 text-[9px] font-bold uppercase text-rose-700">
-                                                                        Out
-                                                                    </span>
-                                                                )}
                                                             </div>
                                                         );
                                                     })}
