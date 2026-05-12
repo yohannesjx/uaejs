@@ -4,6 +4,24 @@ import type { CartItem, CartItemSnapshot } from "$lib/types";
 const STORAGE_KEY = "fashion_cart";
 const SCHEMA_VERSION = 1;
 
+/** Empty / whitespace-only dimensions collapse so line keys stay stable (prevents duplicate lines ×2 stock). */
+function normalizeSnapshotDims(s: CartItemSnapshot): CartItemSnapshot {
+  const trimOrUndef = (v: string | undefined | null) => {
+    const t = (v ?? "").trim();
+    return t.length === 0 ? undefined : t;
+  };
+  return {
+    ...s,
+    size: trimOrUndef(s.size),
+    color: trimOrUndef(s.color),
+  };
+}
+
+function lineKey(snapshot: CartItemSnapshot): string {
+  const s = normalizeSnapshotDims(snapshot);
+  return `${s.id}:${s.size ?? "-"}:${s.color ?? "-"}`;
+}
+
 type CartPersistedV1 = {
   version: 1;
   items: CartItem[];
@@ -15,20 +33,49 @@ function isCartItem(input: unknown): input is CartItem {
   return typeof r.key === "string" && typeof r.quantity === "number" && typeof r.snapshot === "object" && r.snapshot !== null;
 }
 
+/** Merge legacy rows that differ only by empty string vs missing size/color. */
+function dedupeCartItems(items: CartItem[]): CartItem[] {
+  const map = new Map<string, CartItem>();
+  for (const it of items) {
+    if (!isCartItem(it)) continue;
+    const snap = normalizeSnapshotDims(it.snapshot);
+    const key = lineKey(snap);
+    const prev = map.get(key);
+    if (!prev) {
+      map.set(key, { key, quantity: it.quantity, snapshot: { ...snap, maxQuantity: snap.maxQuantity } });
+      continue;
+    }
+    const maxA = prev.snapshot.maxQuantity ?? null;
+    const maxB = snap.maxQuantity ?? null;
+    const cap =
+      maxA != null && maxB != null ? Math.min(maxA, maxB) : (maxA ?? maxB ?? null);
+    const next = prev.quantity + it.quantity;
+    prev.quantity = cap != null ? Math.min(cap, next) : next;
+    prev.snapshot = {
+      ...prev.snapshot,
+      ...snap,
+      maxQuantity: cap ?? snap.maxQuantity ?? prev.snapshot.maxQuantity,
+    };
+  }
+  return Array.from(map.values());
+}
+
 function fromStorage(): CartItem[] {
   if (!browser) return [];
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw) as unknown;
-    if (Array.isArray(parsed)) return parsed.filter(isCartItem); // legacy support
-    if (typeof parsed === "object" && parsed !== null) {
+    let items: CartItem[] = [];
+    if (Array.isArray(parsed)) {
+      items = parsed.filter(isCartItem);
+    } else if (typeof parsed === "object" && parsed !== null) {
       const p = parsed as Partial<CartPersistedV1>;
       if (p.version === SCHEMA_VERSION && Array.isArray(p.items)) {
-        return p.items.filter(isCartItem);
+        items = p.items.filter(isCartItem);
       }
     }
-    return [];
+    return dedupeCartItems(items);
   } catch {
     return [];
   }
@@ -56,17 +103,28 @@ class CartState {
   }
 
   add(snapshot: CartItemSnapshot, quantity = 1) {
-    const key = `${snapshot.id}:${snapshot.size ?? "-"}:${snapshot.color ?? "-"}`;
-    const max = snapshot.maxQuantity ?? null;
+    const snap = normalizeSnapshotDims(snapshot);
+    const key = lineKey(snap);
+    const max = snap.maxQuantity ?? null;
     if (max !== null && max <= 0) return;
     const existing = this.items.find((i) => i.key === key);
     if (existing) {
+      const cap =
+        max != null && existing.snapshot.maxQuantity != null
+          ? Math.min(max, existing.snapshot.maxQuantity)
+          : (max ?? existing.snapshot.maxQuantity ?? null);
       const next = existing.quantity + quantity;
-      existing.quantity = max !== null ? Math.min(max, next) : next;
+      existing.quantity = cap != null ? Math.min(cap, next) : next;
+      existing.snapshot = {
+        ...existing.snapshot,
+        ...snap,
+        maxQuantity: cap ?? snap.maxQuantity ?? existing.snapshot.maxQuantity,
+      };
+      existing.key = key;
       return;
     }
     const initialQty = max !== null ? Math.min(max, quantity) : quantity;
-    if (initialQty > 0) this.items.push({ key, quantity: initialQty, snapshot });
+    if (initialQty > 0) this.items.push({ key, quantity: initialQty, snapshot: snap });
   }
 
   remove(key: string) {

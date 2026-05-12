@@ -78,11 +78,14 @@
   const availableColors = $derived(availableColorSwatches.map((s) => s.name));
   const selectedVariantStock = $derived.by(() => {
     if (!product) return 0;
-    const sz = dim(selectedSize);
-    const col = dim(selectedColor);
-    const exact = product.variants.find(
-      (v) => dim(v.size) === sz && dim(v.color) === col
-    );
+    const selSz = dim(selectedSize);
+    const selCol = dim(selectedColor);
+    const anySize = product.variants.some((v) => dim(v.size) !== "");
+    const anyColor = product.variants.some((v) => dim(v.color) !== "");
+    const sizeOk = (vs: string) => !anySize || dim(vs) === selSz;
+    const colorOk = (vc: string) =>
+      !anyColor || selCol.toLowerCase() === "unknown" || dim(vc) === selCol;
+    const exact = product.variants.find((v) => sizeOk(v.size) && colorOk(v.color));
     if (exact) return exact.stock;
     return product.inventory ?? 0;
   });
@@ -90,10 +93,16 @@
   const sizeStockByOption = $derived.by(() => {
     const out = new Map<string, number>();
     if (!product) return out;
+    const selCol = dim(selectedColor);
+    const anyColor = product.variants.some((v) => dim(v.color) !== "");
     for (const size of product.sizeOptions) {
       const key = dim(size);
       const stock = product.variants
-        .filter((v) => dim(v.size) === key && (!dim(selectedColor) || dim(v.color) === dim(selectedColor)))
+        .filter(
+          (v) =>
+            dim(v.size) === key &&
+            (!anyColor || selCol.toLowerCase() === "unknown" || dim(v.color) === selCol)
+        )
         .reduce((sum, v) => sum + v.stock, 0);
       out.set(size, stock);
     }
@@ -102,10 +111,12 @@
   const colorStockByOption = $derived.by(() => {
     const out = new Map<string, number>();
     if (!product) return out;
+    const selSz = dim(selectedSize);
+    const anySize = product.variants.some((v) => dim(v.size) !== "");
     for (const swatch of availableColorSwatches) {
       const key = dim(swatch.name);
       const stock = product.variants
-        .filter((v) => dim(v.color) === key && (!dim(selectedSize) || dim(v.size) === dim(selectedSize)))
+        .filter((v) => dim(v.color) === key && (!anySize || dim(v.size) === selSz))
         .reduce((sum, v) => sum + v.stock, 0);
       out.set(key, stock);
     }
@@ -113,9 +124,9 @@
   });
 
   const displayedImages = $derived(
-    product && selectedColor 
-      ? (product.colorSwatches.find(s => s.name === selectedColor)?.images?.length 
-          ? product.colorSwatches.find(s => s.name === selectedColor)!.images 
+    product && dim(selectedColor)
+      ? (product.colorSwatches.find((s) => dim(s.name) === dim(selectedColor))?.images?.length
+          ? product.colorSwatches.find((s) => dim(s.name) === dim(selectedColor))!.images
           : product.images)
       : (product?.images ?? [])
   );

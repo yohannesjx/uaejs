@@ -249,7 +249,7 @@ function normalizeAdminProductList(payload: unknown): UiProduct[] {
         imageUrl: thumbnail || null,
         images: thumbnail ? [thumbnail] : [],
         category,
-        color: color || "Unknown",
+        color: color || "",
         colors: compactDistinctStrings(color ? [color] : []),
         colorSwatches: color ? [{ name: color, imageUrl: thumbnail || null, images: thumbnail ? [thumbnail] : [] }] : [],
         sizeOptions: size ? [size] : [],
@@ -272,7 +272,7 @@ function normalizeAdminProductList(payload: unknown): UiProduct[] {
     if (!existing.imageUrl && thumbnail) existing.imageUrl = thumbnail;
     if (thumbnail && !existing.images.includes(thumbnail)) existing.images.push(thumbnail);
     if (size && !existing.sizeOptions.includes(size)) existing.sizeOptions.push(size);
-    if (existing.color === "Unknown" && color) existing.color = color;
+    if (!asTrimmedString(existing.color) && color) existing.color = color;
     if (color && !existing.colors.includes(color)) existing.colors.push(color);
     if (color) addOrUpdateSwatch(existing.colorSwatches, color, thumbnail || null);
     if (existing.inventory === null) existing.inventory = stock;
@@ -346,6 +346,13 @@ function normalizeProductDetail(raw: unknown, fallback: UiProduct | null = null)
   }
 
   const imageList = Array.from(images);
+  const colorList = colors.size > 0 ? Array.from(colors) : [];
+  const fallbackColors = (fallback?.colors ?? [])
+    .map((c) => asTrimmedString(c))
+    .filter((c) => c.length > 0 && c.toLowerCase() !== "unknown");
+  /** Do not use "Unknown" when no variant has a color — it breaks PDP stock filters (variant color is ""). */
+  const primaryColor = colorList[0] ?? fallbackColors[0] ?? "";
+
   return rewriteUiProductMedia({
     id: productID,
     slug: slug || productID,
@@ -355,8 +362,8 @@ function normalizeProductDetail(raw: unknown, fallback: UiProduct | null = null)
     imageUrl: imageList[0] ?? fallback?.imageUrl ?? null,
     images: imageList,
     category,
-    color: colors.values().next().value ?? fallback?.color ?? "Unknown",
-    colors: colors.size ? Array.from(colors) : fallback?.colors ?? [],
+    color: primaryColor,
+    colors: colorList.length > 0 ? colorList : fallbackColors,
     colorSwatches: swatches,
     sizeOptions:
       sizes.size > 0
