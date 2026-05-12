@@ -122,6 +122,11 @@ function asString(v: unknown, fallback = ""): string {
   return typeof v === "string" ? v : fallback;
 }
 
+/** Trim variant option keys so storefront filters match admin-entered spacing/casing quirks. */
+function asTrimmedString(v: unknown, fallback = ""): string {
+  return typeof v === "string" ? v.trim() : fallback;
+}
+
 function asNumber(v: unknown, fallback = 0): number {
   return typeof v === "number" && Number.isFinite(v) ? v : fallback;
 }
@@ -202,7 +207,7 @@ function normalizeProduct(raw: unknown): UiProduct | null {
     color: asString(r.color, "Unknown"),
     colors: compactDistinctStrings([asString(r.color)]),
     colorSwatches: compactDistinctStrings([asString(r.color)]).map((name) => ({ name, imageUrl: null, images: [] })),
-    sizeOptions: asStringArray(r.sizes).length ? asStringArray(r.sizes) : ["S", "M", "L"],
+    sizeOptions: asStringArray(r.sizes).length ? asStringArray(r.sizes).map((s) => s.trim()).filter(Boolean) : [],
     tags: asStringArray(r.tags),
     description: asString(r.description, ""),
     inventory: r.inventory === null ? null : asNumber(r.inventory, 0),
@@ -228,8 +233,8 @@ function normalizeAdminProductList(payload: unknown): UiProduct[] {
     const existing = grouped.get(productID);
     const price = asNumberLike(row.price, 0);
     const thumbnail = asString(row.thumbnail);
-    const size = asString(row.size);
-    const color = asString(row.color);
+    const size = asTrimmedString(row.size);
+    const color = asTrimmedString(row.color);
     const stock = asNumberLike(row.stock, 0);
     const slug = asString(row.slug, productID);
     const category = asString(row.category, "uncategorized");
@@ -299,8 +304,8 @@ function normalizeProductDetail(raw: unknown, fallback: UiProduct | null = null)
   const description = asString(product.description, fallback?.description ?? "");
 
   const images = new Set<string>(fallback?.images ?? []);
-  const sizes = new Set<string>(fallback?.sizeOptions ?? []);
-  const colors = new Set<string>(fallback?.colors ?? []);
+  const sizes = new Set<string>((fallback?.sizeOptions ?? []).map((s) => s.trim()).filter(Boolean));
+  const colors = new Set<string>((fallback?.colors ?? []).map((s) => s.trim()).filter(Boolean));
   const swatches: ProductColorSwatch[] = (fallback?.colorSwatches ?? []).map((s) => ({ ...s }));
   let price = fallback?.price ?? 0;
   let compareAtPrice: number | null = fallback?.compareAtPrice ?? null;
@@ -311,8 +316,8 @@ function normalizeProductDetail(raw: unknown, fallback: UiProduct | null = null)
     const vr = asRecord(v);
     if (!vr) continue;
     const image = asString(vr.image_url);
-    const size = asString(vr.size);
-    const color = asString(vr.color);
+    const size = asTrimmedString(vr.size);
+    const color = asTrimmedString(vr.color);
     const qty = asNumberLike(vr.quantity, 0);
     const salePrice = asNumberLike(vr.sale_price, 0);
     const basePrice = asNumberLike(vr.price, 0);
@@ -353,7 +358,14 @@ function normalizeProductDetail(raw: unknown, fallback: UiProduct | null = null)
     color: colors.values().next().value ?? fallback?.color ?? "Unknown",
     colors: colors.size ? Array.from(colors) : fallback?.colors ?? [],
     colorSwatches: swatches,
-    sizeOptions: sizes.size ? Array.from(sizes) : fallback?.sizeOptions ?? ["S", "M", "L"],
+    sizeOptions:
+      sizes.size > 0
+        ? Array.from(sizes)
+        : (() => {
+            const fb = (fallback?.sizeOptions ?? []).map((s) => s.trim()).filter(Boolean);
+            if (fb.length > 0) return fb;
+            return variantsAvailability.length > 0 ? [""] : [];
+          })(),
     tags: fallback?.tags ?? [],
     description,
     inventory,

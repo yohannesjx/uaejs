@@ -32,6 +32,11 @@
   let errorMessage = $state("");
   let relatedLoadedFor = $state("");
 
+  /** Normalize variant dimension strings so "M " matches "M" and empty size rows still aggregate. */
+  function dim(s: string | undefined | null) {
+    return (s ?? "").trim();
+  }
+
   $effect(() => {
     const handle = page.params.handle ?? "";
     const syncProduct = () => getProduct(handle)
@@ -41,8 +46,10 @@
           errorMessage = "Product not found.";
           return;
         }
-        if (!selectedSize || !p.sizeOptions.includes(selectedSize)) selectedSize = p.sizeOptions[0] ?? "";
-        if (!selectedColor || !p.colors.includes(selectedColor)) selectedColor = p.color;
+        const sizeKeys = p.sizeOptions.map((x) => dim(x));
+        if (!selectedSize || !sizeKeys.includes(dim(selectedSize))) selectedSize = p.sizeOptions[0] ?? "";
+        const colorKeys = p.colors.map((c) => dim(c));
+        if (!selectedColor || !colorKeys.includes(dim(selectedColor))) selectedColor = dim(p.color);
         if (relatedLoadedFor !== p.id) {
           recentViews.push(p);
           relatedLoadedFor = p.id;
@@ -71,8 +78,10 @@
   const availableColors = $derived(availableColorSwatches.map((s) => s.name));
   const selectedVariantStock = $derived.by(() => {
     if (!product) return 0;
+    const sz = dim(selectedSize);
+    const col = dim(selectedColor);
     const exact = product.variants.find(
-      (v) => (v.size || "") === (selectedSize || "") && (v.color || "") === (selectedColor || "")
+      (v) => dim(v.size) === sz && dim(v.color) === col
     );
     if (exact) return exact.stock;
     return product.inventory ?? 0;
@@ -82,8 +91,9 @@
     const out = new Map<string, number>();
     if (!product) return out;
     for (const size of product.sizeOptions) {
+      const key = dim(size);
       const stock = product.variants
-        .filter((v) => v.size === size && (!selectedColor || v.color === selectedColor))
+        .filter((v) => dim(v.size) === key && (!dim(selectedColor) || dim(v.color) === dim(selectedColor)))
         .reduce((sum, v) => sum + v.stock, 0);
       out.set(size, stock);
     }
@@ -92,11 +102,12 @@
   const colorStockByOption = $derived.by(() => {
     const out = new Map<string, number>();
     if (!product) return out;
-    for (const color of availableColors) {
+    for (const swatch of availableColorSwatches) {
+      const key = dim(swatch.name);
       const stock = product.variants
-        .filter((v) => v.color === color && (!selectedSize || v.size === selectedSize))
+        .filter((v) => dim(v.color) === key && (!dim(selectedSize) || dim(v.size) === dim(selectedSize)))
         .reduce((sum, v) => sum + v.stock, 0);
-      out.set(color, stock);
+      out.set(key, stock);
     }
     return out;
   });
@@ -305,10 +316,10 @@
           </div>
           <div class="flex items-center gap-3">
             {#each availableColorSwatches as swatch}
-              {@const swatchStock = colorStockByOption.get(swatch.name) ?? 0}
+              {@const swatchStock = colorStockByOption.get(dim(swatch.name)) ?? 0}
               {@const isSwatchDisabled = swatchStock <= 0}
               <button 
-                class="relative flex h-8 w-8 items-center justify-center overflow-hidden rounded-full disabled:cursor-not-allowed disabled:opacity-45 disabled:grayscale disabled:brightness-90 {selectedColor === swatch.name ? 'ring-1 ring-black ring-offset-2' : 'hover:ring-1 hover:ring-zinc-300 hover:ring-offset-2'} transition-all"
+                class="relative flex h-8 w-8 items-center justify-center overflow-hidden rounded-full disabled:cursor-not-allowed disabled:opacity-45 disabled:grayscale disabled:brightness-90 {dim(selectedColor) === dim(swatch.name) ? 'ring-1 ring-black ring-offset-2' : 'hover:ring-1 hover:ring-zinc-300 hover:ring-offset-2'} transition-all"
                 onclick={() => { selectedColor = swatch.name; stockNotice = ""; }}
                 aria-label={swatch.name}
                 disabled={isSwatchDisabled}
@@ -334,11 +345,11 @@
               {@const sizeStock = sizeStockByOption.get(s) ?? 0}
               {@const isSizeDisabled = sizeStock <= 0}
               <button
-                class="relative border py-3 text-xs font-semibold uppercase tracking-widest transition-colors disabled:cursor-not-allowed disabled:opacity-40 {selectedSize === s ? 'border-black bg-black text-white' : 'border-zinc-300 text-black hover:border-black'}"
+                class="relative border py-3 text-xs font-semibold uppercase tracking-widest transition-colors disabled:cursor-not-allowed disabled:opacity-40 {dim(selectedSize) === dim(s) ? 'border-black bg-black text-white' : 'border-zinc-300 text-black hover:border-black'}"
                 onclick={() => { selectedSize = s; stockNotice = ""; }}
                 disabled={isSizeDisabled}
               >
-                {s}
+                {s === "" ? "One size" : s}
               </button>
             {/each}
           </div>

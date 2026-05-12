@@ -105,11 +105,12 @@ func (r *ProductRepository) ResolveUniqueProductSlug(ctx context.Context, tx pgx
 		slug = "product"
 	}
 
+	// Case- and whitespace-insensitive match so legacy rows like "Summer" do not collide with new "summer".
 	const q = `
 		SELECT EXISTS (
 			SELECT 1
 			FROM products
-			WHERE slug = $1
+			WHERE lower(btrim(slug)) = lower(btrim($1::text))
 			  AND ($2::uuid IS NULL OR id <> $2::uuid)
 		)`
 
@@ -253,7 +254,7 @@ func (r *ProductRepository) ListVariantsByProduct(ctx context.Context, productID
 		           LIMIT 1
 		       ) AS sale_price,
 		       COALESCE((
-		           SELECT i.quantity_on_hand
+		           SELECT i.quantity_available
 		           FROM inventory i
 		           WHERE i.variant_id = variants.id
 		           LIMIT 1
