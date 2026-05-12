@@ -40,7 +40,7 @@ const PRESET_OPTIONS = ["Size", "Color", "Material", "Style"];
 
 /** Checkbox | thumb | label | price | sale | qty | sku | cost — same template for header + every row */
 const VARIANT_TABLE_GRID =
-    "grid w-full grid-cols-[1.5rem_2rem_minmax(4.5rem,1fr)_4.5rem_4.5rem_2.75rem_6.75rem_4.5rem] items-center gap-x-2 px-2 py-1.5";
+    "grid w-full grid-cols-[1.5rem_2rem_minmax(0,10rem)_4.5rem_4.5rem_2.75rem_minmax(5.5rem,1fr)_4.5rem] items-center gap-x-2 px-2 py-1.5";
 
 function pickVariantSku(existing: ProductVariantDraft | undefined, nextSku: () => string): string {
     const raw = existing?.sku;
@@ -200,6 +200,8 @@ export function VariantBuilder({
 
     const [mediaModalOpen, setMediaModalOpen] = useState(false);
     const [mediaTarget, setMediaTarget] = useState<{ type: 'group', groupName: string } | { type: 'variant', index: number } | null>(null);
+    /** While a variant qty field is focused, keyed by variant index — empty string when quantity was 0 so the field shows blank until blur. */
+    const [qtyBufferByIndex, setQtyBufferByIndex] = useState<Record<number, string>>({});
 
     const sensors = useSensors(
         useSensor(PointerSensor),
@@ -468,12 +470,12 @@ export function VariantBuilder({
                             >
                                 <span className="justify-self-center" aria-hidden />
                                 <span aria-hidden />
-                                <span className="min-w-0">Variant</span>
-                                <span className="text-right">Price</span>
-                                <span className="text-right">Sale</span>
-                                <span className="text-right">Qty</span>
-                                <span>SKU</span>
-                                <span className="text-right">Cost</span>
+                                <span className="min-w-0 justify-self-start">Variant</span>
+                                <span className="w-full justify-self-end text-right">Price</span>
+                                <span className="w-full justify-self-end text-right">Sale</span>
+                                <span className="w-full justify-self-end text-right">Qty</span>
+                                <span className="w-full min-w-0 justify-self-end text-right">SKU</span>
+                                <span className="w-full justify-self-end text-right">Cost</span>
                             </div>
 
                             <div className="divide-y divide-[var(--border)]">
@@ -540,10 +542,37 @@ export function VariantBuilder({
                                                 />
                                                 <Input
                                                     className="h-7 w-full min-w-0 px-1 text-right text-xs tabular-nums"
-                                                    type="number"
-                                                    min="0"
-                                                    value={v.quantity ?? ""}
-                                                    onChange={(e) => updateVariant(v._index, { quantity: parseInt(e.target.value, 10) || 0 })}
+                                                    type="text"
+                                                    inputMode="numeric"
+                                                    autoComplete="off"
+                                                    value={
+                                                        qtyBufferByIndex[v._index] !== undefined
+                                                            ? qtyBufferByIndex[v._index]
+                                                            : String(v.quantity ?? 0)
+                                                    }
+                                                    onFocus={() => {
+                                                        setQtyBufferByIndex((prev) => ({
+                                                            ...prev,
+                                                            [v._index]:
+                                                                (v.quantity ?? 0) === 0 ? "" : String(v.quantity ?? 0),
+                                                        }));
+                                                    }}
+                                                    onBlur={() => {
+                                                        setQtyBufferByIndex((prev) => {
+                                                            if (!(v._index in prev)) return prev;
+                                                            const next = { ...prev };
+                                                            delete next[v._index];
+                                                            return next;
+                                                        });
+                                                    }}
+                                                    onChange={(e) => {
+                                                        const digits = e.target.value.replace(/\D/g, "");
+                                                        setQtyBufferByIndex((prev) => ({ ...prev, [v._index]: digits }));
+                                                        updateVariant(v._index, {
+                                                            quantity:
+                                                                digits === "" ? 0 : Number.parseInt(digits, 10) || 0,
+                                                        });
+                                                    }}
                                                 />
                                                 <Input
                                                     className="h-7 w-full min-w-0 px-1 font-mono text-[11px]"
@@ -612,10 +641,13 @@ export function VariantBuilder({
                                                         value={groupVariants[0]?.sale_price ?? ""}
                                                         onChange={(e) => updateGroupSalePrice(groupName, e.target.value)}
                                                     />
-                                                    <div className="text-right text-xs font-medium tabular-nums text-[var(--muted-foreground)]">
+                                                    <div className="w-full justify-self-end text-right text-xs font-medium tabular-nums text-[var(--muted-foreground)]">
                                                         {groupVariants.reduce((sum, x) => sum + (x.quantity || 0), 0)}
                                                     </div>
-                                                    <div className="truncate text-[10px] text-[var(--muted-foreground)]" title="Per-SKU in rows">
+                                                    <div
+                                                        className="w-full min-w-0 justify-self-end truncate text-right text-[10px] text-[var(--muted-foreground)]"
+                                                        title="Per-SKU in rows"
+                                                    >
                                                         —
                                                     </div>
                                                     <Input
@@ -690,10 +722,47 @@ export function VariantBuilder({
                                                                 />
                                                                 <Input
                                                                     className="h-7 w-full min-w-0 px-1 text-right text-xs tabular-nums"
-                                                                    type="number"
-                                                                    min="0"
-                                                                    value={v.quantity ?? ""}
-                                                                    onChange={(e) => updateVariant(v._index, { quantity: parseInt(e.target.value, 10) || 0 })}
+                                                                    type="text"
+                                                                    inputMode="numeric"
+                                                                    autoComplete="off"
+                                                                    value={
+                                                                        qtyBufferByIndex[v._index] !== undefined
+                                                                            ? qtyBufferByIndex[v._index]
+                                                                            : String(v.quantity ?? 0)
+                                                                    }
+                                                                    onFocus={() => {
+                                                                        setQtyBufferByIndex((prev) => ({
+                                                                            ...prev,
+                                                                            [v._index]:
+                                                                                (v.quantity ?? 0) === 0
+                                                                                    ? ""
+                                                                                    : String(v.quantity ?? 0),
+                                                                        }));
+                                                                    }}
+                                                                    onBlur={() => {
+                                                                        setQtyBufferByIndex((prev) => {
+                                                                            if (!(v._index in prev)) return prev;
+                                                                            const next = { ...prev };
+                                                                            delete next[v._index];
+                                                                            return next;
+                                                                        });
+                                                                    }}
+                                                                    onChange={(e) => {
+                                                                        const digits = e.target.value.replace(
+                                                                            /\D/g,
+                                                                            "",
+                                                                        );
+                                                                        setQtyBufferByIndex((prev) => ({
+                                                                            ...prev,
+                                                                            [v._index]: digits,
+                                                                        }));
+                                                                        updateVariant(v._index, {
+                                                                            quantity:
+                                                                                digits === ""
+                                                                                    ? 0
+                                                                                    : Number.parseInt(digits, 10) || 0,
+                                                                        });
+                                                                    }}
                                                                 />
                                                                 <Input
                                                                     className="h-7 w-full min-w-0 px-1 font-mono text-[11px]"
