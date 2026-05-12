@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"github.com/dubai-retail/os/internal/domain"
@@ -42,6 +43,57 @@ func (r *CategoryRepository) InsertCategory(ctx context.Context, tx pgx.Tx, c *d
 	return err
 }
 
+// categoryProductCountExpr counts manual categories via memberships and smart categories
+// by matching active products against JSON conditions (title contains / equals).
+const categoryProductCountExpr = `
+COALESCE(
+	CASE c.type
+		WHEN 'manual' THEN (
+			SELECT COUNT(*)::int FROM product_category_memberships pcm WHERE pcm.category_id = c.id
+		)
+		WHEN 'smart' THEN (
+			SELECT COUNT(*)::int
+			FROM products p
+			WHERE p.tenant_id = c.tenant_id
+				AND p.status = 'active'
+				AND COALESCE(jsonb_array_length(COALESCE(c.conditions, '[]'::jsonb)), 0) > 0
+				AND (
+					SELECT COALESCE(bool_and(
+						CASE
+							WHEN (cond->>'field') = 'title' AND (cond->>'operator') = 'contains' THEN
+								LOWER(COALESCE(p.name, '')) LIKE '%' || LOWER(TRIM(cond->>'value')) || '%'
+							WHEN (cond->>'field') = 'title' AND (cond->>'operator') = 'equals' THEN
+								LOWER(TRIM(COALESCE(p.name, ''))) = LOWER(TRIM(cond->>'value'))
+							ELSE FALSE
+						END
+					), false)
+					FROM jsonb_array_elements(COALESCE(c.conditions, '[]'::jsonb)) AS cond
+				)
+		)
+		ELSE 0
+	END,
+	0)`
+
+func (r *CategoryRepository) DeleteMembershipsForProduct(ctx context.Context, tx pgx.Tx, productID uuid.UUID) error {
+	_, err := tx.Exec(ctx, `DELETE FROM product_category_memberships WHERE product_id = $1`, productID)
+	return err
+}
+
+func (r *CategoryRepository) FirstCategoryIDForProduct(ctx context.Context, productID uuid.UUID) (*uuid.UUID, error) {
+	var id uuid.UUID
+	err := r.pool.QueryRow(ctx,
+		`SELECT category_id FROM product_category_memberships WHERE product_id = $1 ORDER BY created_at ASC LIMIT 1`,
+		productID,
+	).Scan(&id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &id, nil
+}
+
 func (r *CategoryRepository) LinkProducts(ctx context.Context, tx pgx.Tx, categoryID uuid.UUID, productIDs []uuid.UUID) error {
 	if len(productIDs) == 0 {
 		return nil
@@ -71,15 +123,10 @@ func (r *CategoryRepository) ListCategories(ctx context.Context, tenantID uuid.U
 			c.type,
 			c.image_url,
 			c.conditions,
-			COALESCE(m.product_count, 0) AS product_count,
+			` + categoryProductCountExpr + ` AS product_count,
 			c.created_at,
 			c.updated_at
 		FROM product_categories c
-		LEFT JOIN LATERAL (
-			SELECT COUNT(*)::int AS product_count
-			FROM product_category_memberships pcm
-			WHERE pcm.category_id = c.id
-		) m ON TRUE
 		WHERE tenant_id = $1
 		ORDER BY c.title ASC
 	`
@@ -119,14 +166,12 @@ func (r *CategoryRepository) GetCategory(ctx context.Context, tenantID, category
 			c.image_url,
 			c.conditions,
 			COALESCE(m.product_ids, ARRAY[]::uuid[]) AS product_ids,
-			COALESCE(m.product_count, 0) AS product_count,
+			` + categoryProductCountExpr + ` AS product_count,
 			c.created_at,
 			c.updated_at
 		FROM product_categories c
 		LEFT JOIN LATERAL (
-			SELECT
-				ARRAY_AGG(pcm.product_id ORDER BY pcm.created_at DESC) AS product_ids,
-				COUNT(*)::int AS product_count
+			SELECT ARRAY_AGG(pcm.product_id ORDER BY pcm.created_at DESC) AS product_ids
 			FROM product_category_memberships pcm
 			WHERE pcm.category_id = c.id
 		) m ON TRUE

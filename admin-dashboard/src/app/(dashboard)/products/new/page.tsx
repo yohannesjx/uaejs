@@ -233,12 +233,19 @@ export default function NewProductPage() {
     }, [hasUnsavedChanges]);
 
     // 4. Manual Publish Handlers
-    const handleSave = useCallback(async () => {
+    const handleSave = useCallback(async (forcedStatus?: ProductStatus) => {
         const vals = getValues();
         if (!vals.title?.trim()) {
             toast.error("Product title is required");
             return;
         }
+
+        const intQty = (primary: unknown, fallback: unknown): number => {
+            const raw = primary != null && primary !== "" ? primary : fallback;
+            if (typeof raw === "number" && Number.isFinite(raw)) return Math.max(0, Math.floor(raw));
+            const n = Number.parseInt(String(raw ?? "0"), 10);
+            return Number.isFinite(n) && n >= 0 ? n : 0;
+        };
 
         setSaveStatus("saving");
         try {
@@ -265,7 +272,7 @@ export default function NewProductPage() {
                     sale_price: rec.sale_price ? String(rec.sale_price) : (vals.salePrice || undefined),
                     cost: String(rec.cost || vals.cost || "0"),
                     weight_g: rec.weight_g ? Number(rec.weight_g) : undefined,
-                    quantity: rec.quantity ? Number(rec.quantity) : Number(vals.quantity || 0),
+                    quantity: intQty(rec.quantity, vals.quantity),
                     options: (rec.options as Record<string, string>) || {},
                     media: mergedMedia,
                 } as ProductVariantDraft;
@@ -277,17 +284,19 @@ export default function NewProductPage() {
                     price: String(vals.price || "0"),
                     sale_price: vals.salePrice || undefined,
                     cost: String(vals.cost || "0"),
-                    quantity: Number(vals.quantity || 0),
+                    quantity: intQty(vals.quantity, 0),
                     options: {},
                     media: fallbackMediaUrl ? [{ id: "fallback-media", url: fallbackMediaUrl, mime_type: "image/*", sort_order: 0 } as unknown as MediaAsset] : [],
                 });
             }
 
+            const effectiveStatus = forcedStatus ?? vals.status ?? "active";
+
             await api.createProductV2({
                 title: vals.title.trim(),
                 slug: vals.slug?.trim() || vals.title.trim(),
                 description: vals.description || "",
-                status: vals.status || "active",
+                status: effectiveStatus,
                 category_id: vals.categoryId || undefined,
                 category: selectedCategoryName || undefined,
                 track_inventory: Boolean(vals.trackInventory),
@@ -358,7 +367,7 @@ export default function NewProductPage() {
                                 <Button size="sm" variant="outline" onClick={handleDiscard}>
                                     Discard
                                 </Button>
-                                <Button size="sm" onClick={handleSave} disabled={saveStatus === "saving"}>
+                                <Button size="sm" onClick={() => { void handleSave(); }} disabled={saveStatus === "saving"}>
                                     Save
                                 </Button>
                             </div>
@@ -399,13 +408,19 @@ export default function NewProductPage() {
                     <div className="flex items-center gap-2">
                         <Button
                             variant="outline"
-                            onClick={() => { setValue("status", "draft", { shouldDirty: true }); handleSave(); }}
+                            onClick={() => {
+                                setValue("status", "draft", { shouldDirty: true });
+                                void handleSave("draft");
+                            }}
                             disabled={saveStatus === "saving"}
                         >
                             Save draft
                         </Button>
                         <Button
-                            onClick={() => { setValue("status", "active", { shouldDirty: true }); handleSave(); }}
+                            onClick={() => {
+                                setValue("status", "active", { shouldDirty: true });
+                                void handleSave("active");
+                            }}
                             disabled={saveStatus === "saving"}
                         >
                             <Save className="size-4" />

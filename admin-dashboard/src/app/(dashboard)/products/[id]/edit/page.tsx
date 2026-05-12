@@ -84,7 +84,8 @@ export default function EditProductPage() {
             const productUpdatedAt = (existing.product?.updated_at as string | undefined) ?? "";
             const variantIds = ((existing.variants ?? []) as Record<string, unknown>[]).map((v) => String(v.id)).join(",");
             const collectionKey = [...(existing.collection_ids ?? [])].map(String).sort().join(",");
-            const snapshotKey = `${params.id}:${productUpdatedAt}:${variantIds}:${collectionKey}`;
+            const categoryKey = (existing as { category_id?: string | null }).category_id ?? "";
+            const snapshotKey = `${params.id}:${productUpdatedAt}:${variantIds}:${collectionKey}:${categoryKey}`;
             if (snapshotKey === hydratedSnapshotKey) return;
             /* eslint-disable react-hooks/set-state-in-effect */
             setHydratedSnapshotKey(snapshotKey);
@@ -97,6 +98,7 @@ export default function EditProductPage() {
             setSeoTitle(p.seo_title ?? "");
             setSeoDescription(p.seo_description ?? "");
             setCollectionIds((existing.collection_ids ?? []).map(String));
+            setCategoryId((existing as { category_id?: string | null }).category_id ?? null);
 
             // Assume the API might return SKU natively, or fetch from first variant
             const rawVariants = (existing.variants as Array<Record<string, unknown>>) || [];
@@ -263,7 +265,7 @@ export default function EditProductPage() {
                 slug,
                 description,
                 status,
-                category_id: categoryId,
+                category_id: categoryId ?? "",
                 category: categoryName || undefined,
                 tags,
                 seo_title: seoTitle,
@@ -330,6 +332,7 @@ export default function EditProductPage() {
 
             queryClient.invalidateQueries({ queryKey: ["products"] });
             queryClient.invalidateQueries({ queryKey: ["collections"] });
+            queryClient.invalidateQueries({ queryKey: ["categories"] });
             queryClient.invalidateQueries({ queryKey: ["product", params.id] });
             await queryClient.refetchQueries({ queryKey: ["product", params.id] });
             toast.success("Product updated");

@@ -64,27 +64,36 @@ type VariantInput struct {
 	Cost      *string  `json:"cost,omitempty"`
 }
 
+// productCategorySync assigns products to product_categories via memberships.
+type productCategorySync interface {
+	SetProductCategory(ctx context.Context, tenantID, productID uuid.UUID, categoryID *uuid.UUID) error
+	SetProductCategoryTx(ctx context.Context, tx pgx.Tx, tenantID, productID uuid.UUID, categoryID *uuid.UUID) error
+	FirstCategoryIDForProduct(ctx context.Context, productID uuid.UUID) (*uuid.UUID, error)
+}
+
 // CreateProductInput is the request payload for the CreateProductWithVariants service method.
 type CreateProductInput struct {
-	TenantID        uuid.UUID      `json:"tenant_id,omitempty"`
-	Name            string         `json:"name"`
-	Slug            *string        `json:"slug,omitempty"`
-	NameAR          *string        `json:"name_ar,omitempty"`
-	Description     *string        `json:"description,omitempty"`
-	Brand           *string        `json:"brand,omitempty"`
-	Category        *string        `json:"category,omitempty"`
-	SubCategory     *string        `json:"sub_category,omitempty"`
-	VATType         domain.VATType `json:"vat_type"`
-	HSCode          *string        `json:"hs_code,omitempty"`
-	CountryOfOrigin string         `json:"country_of_origin"`
-	TrackInventory  bool           `json:"track_inventory"`
-	WarehouseID     *uuid.UUID     `json:"warehouse_id,omitempty"`
-	Variants        []VariantInput `json:"variants"`
+	TenantID        uuid.UUID             `json:"tenant_id,omitempty"`
+	Name            string                `json:"name"`
+	Slug            *string               `json:"slug,omitempty"`
+	NameAR          *string               `json:"name_ar,omitempty"`
+	Description     *string               `json:"description,omitempty"`
+	Brand           *string               `json:"brand,omitempty"`
+	Category        *string               `json:"category,omitempty"`
+	SubCategory     *string               `json:"sub_category,omitempty"`
+	CategoryID      *uuid.UUID            `json:"category_id,omitempty"`
+	VATType         domain.VATType        `json:"vat_type"`
+	HSCode          *string               `json:"hs_code,omitempty"`
+	CountryOfOrigin string                `json:"country_of_origin"`
+	TrackInventory  bool                  `json:"track_inventory"`
+	WarehouseID     *uuid.UUID            `json:"warehouse_id,omitempty"`
+	Status          *domain.ProductStatus `json:"status,omitempty"`
+	Variants        []VariantInput        `json:"variants"`
 }
 
 // UpdateProductInput is the request payload for partial updates (PATCH) during draft autho-saves.
 type UpdateProductInput struct {
-	Name            *string               `json:"name"`
+	Name *string `json:"name"`
 	// Title aliases name for admin dashboard JSON (theme uses "title" on products).
 	Title           *string               `json:"title,omitempty"`
 	Slug            *string               `json:"slug"`
@@ -99,6 +108,10 @@ type UpdateProductInput struct {
 	CountryOfOrigin *string               `json:"country_of_origin"`
 	// When non-nil, replaces all collection memberships for this product ([] clears).
 	CollectionIDs *[]uuid.UUID `json:"collection_ids,omitempty"`
+	// When non-nil, syncs category membership. Use "" to clear; omit or null to leave unchanged.
+	CategoryID *string `json:"category_id,omitempty"`
+	// CallerTenantID is set by HTTP handlers for category membership sync (not read from JSON).
+	CallerTenantID uuid.UUID `json:"-"`
 }
 
 type UpsertVariantInput struct {
@@ -115,9 +128,10 @@ type UpsertVariantInput struct {
 
 // CreateProductResult is returned after a successful product creation.
 type CreateProductResult struct {
-	Product         *domain.Product   `json:"product"`
-	Variants        []*domain.Variant `json:"variants"`
-	CollectionIDs   []uuid.UUID       `json:"collection_ids,omitempty"`
+	Product       *domain.Product   `json:"product"`
+	Variants      []*domain.Variant `json:"variants"`
+	CollectionIDs []uuid.UUID       `json:"collection_ids,omitempty"`
+	CategoryID    *uuid.UUID        `json:"category_id,omitempty"`
 }
 
 // SetPriceInput sets or replaces a channel price.
@@ -147,10 +161,11 @@ type ProductService struct {
 	pool TxBeginner
 	log  *zap.Logger
 	pcm  ProductCollectionMembershipLinker
+	pcs  productCategorySync
 }
 
-func NewProductService(repo ProductRepo, pool TxBeginner, log *zap.Logger, pcm ProductCollectionMembershipLinker) *ProductService {
-	return &ProductService{repo: repo, pool: pool, log: log, pcm: pcm}
+func NewProductService(repo ProductRepo, pool TxBeginner, log *zap.Logger, pcm ProductCollectionMembershipLinker, pcs productCategorySync) *ProductService {
+	return &ProductService{repo: repo, pool: pool, log: log, pcm: pcm, pcs: pcs}
 }
 
 // CreateDraft initializes an empty product in the 'draft' status.
@@ -218,7 +233,8 @@ func (s *ProductService) UpdateProduct(ctx context.Context, id uuid.UUID, input 
 	}
 
 	collectionSync := input.CollectionIDs != nil && s.pcm != nil
-	if len(updates) == 0 && !collectionSync {
+	categorySync := input.CategoryID != nil && s.pcs != nil
+	if len(updates) == 0 && !collectionSync && !categorySync {
 		return nil // Nothing to patch
 	}
 
@@ -268,6 +284,25 @@ func (s *ProductService) UpdateProduct(ctx context.Context, id uuid.UUID, input 
 		s.log.Info("product collections synced", zap.String("product_id", id.String()))
 	}
 
+	if categorySync {
+		tenantID := input.CallerTenantID
+		if tenantID == uuid.Nil {
+			tenantID = domain.DefaultTenantID
+		}
+		var catID *uuid.UUID
+		if raw := strings.TrimSpace(*input.CategoryID); raw != "" {
+			parsed, err := uuid.Parse(raw)
+			if err != nil {
+				return fmt.Errorf("UpdateProduct: invalid category_id: %w", err)
+			}
+			catID = &parsed
+		}
+		if err := s.pcs.SetProductCategory(ctx, tenantID, id, catID); err != nil {
+			return fmt.Errorf("UpdateProduct category: %w", err)
+		}
+		s.log.Info("product category synced", zap.String("product_id", id.String()))
+	}
+
 	return nil
 }
 
@@ -308,6 +343,14 @@ func (s *ProductService) CreateProductWithVariants(
 		return nil, fmt.Errorf("CreateProductWithVariants: resolve slug: %w", err)
 	}
 
+	status := domain.StatusActive
+	if input.Status != nil {
+		switch *input.Status {
+		case domain.StatusDraft, domain.StatusActive, domain.StatusArchived:
+			status = *input.Status
+		}
+	}
+
 	product := &domain.Product{
 		ID:              uuid.New(),
 		Name:            &nameStr,
@@ -317,7 +360,7 @@ func (s *ProductService) CreateProductWithVariants(
 		Brand:           input.Brand,
 		Category:        input.Category,
 		SubCategory:     input.SubCategory,
-		Status:          domain.StatusActive,
+		Status:          status,
 		VATType:         input.VATType,
 		HSCode:          input.HSCode,
 		CountryOfOrigin: input.CountryOfOrigin,
@@ -464,6 +507,12 @@ func (s *ProductService) CreateProductWithVariants(
 		variants = append(variants, variant)
 	}
 
+	if s.pcs != nil && input.CategoryID != nil {
+		if err := s.pcs.SetProductCategoryTx(ctx, tx, input.TenantID, product.ID, input.CategoryID); err != nil {
+			return nil, fmt.Errorf("CreateProductWithVariants: set category: %w", err)
+		}
+	}
+
 	if err := tx.Commit(ctx); err != nil {
 		return nil, fmt.Errorf("CreateProductWithVariants: commit: %w", err)
 	}
@@ -478,7 +527,12 @@ func (s *ProductService) CreateProductWithVariants(
 		zap.Int("variants", len(variants)),
 	)
 
-	return &CreateProductResult{Product: product, Variants: variants}, nil
+	out := &CreateProductResult{Product: product, Variants: variants}
+	if input.CategoryID != nil {
+		cid := *input.CategoryID
+		out.CategoryID = &cid
+	}
+	return out, nil
 }
 
 // GetProduct returns a product with all its variants.
@@ -507,6 +561,16 @@ func (s *ProductService) GetProduct(ctx context.Context, id uuid.UUID) (*CreateP
 		default:
 			// Always a non-nil slice so JSON is [] (not omitted) — stable admin reload/sync.
 			out.CollectionIDs = append([]uuid.UUID{}, ids...)
+		}
+	}
+	if s.pcs != nil {
+		cid, err := s.pcs.FirstCategoryIDForProduct(ctx, id)
+		switch {
+		case err != nil:
+			s.log.Warn("FirstCategoryIDForProduct failed; omitting category_id",
+				zap.String("product_id", id.String()), zap.Error(err))
+		case cid != nil:
+			out.CategoryID = cid
 		}
 	}
 	return out, nil

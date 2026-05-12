@@ -70,12 +70,15 @@ func NewServices(d Deps) *Services {
 	)
 
 	collectionRepo := postgres.NewCollectionRepository(d.Pool)
+	categoryRepo := postgres.NewCategoryRepository(d.Pool)
+	categorySvc := NewCategoryService(categoryRepo, d.Pool, d.Log)
 
 	productSvc := NewProductService(
 		d.Repos.Product,
 		d.Pool,
 		d.Log,
 		collectionRepo,
+		categorySvc,
 	)
 
 	collectionSvc := NewCollectionService(
@@ -126,11 +129,7 @@ func NewServices(d Deps) *Services {
 			d.ObjectStore,
 			d.Log,
 		),
-		Category: NewCategoryService(
-			postgres.NewCategoryRepository(d.Pool),
-			d.Pool,
-			d.Log,
-		),
+		Category: categorySvc,
 		Collection: collectionSvc,
 	}
 }

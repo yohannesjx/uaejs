@@ -161,6 +161,7 @@ func (h *productHandler) UpdateProduct(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "invalid request body: "+err.Error(), http.StatusBadRequest)
 		return
 	}
+	input.CallerTenantID = middleware.TenantFromContext(r.Context())
 
 	if err := h.svc.UpdateProduct(r.Context(), id, input); err != nil {
 		h.log.Error("UpdateProduct failed", zap.Error(err))

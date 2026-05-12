@@ -371,9 +371,12 @@ export const api = {
       body: JSON.stringify(payload),
     }),
   getProduct: (id: string) =>
-    apiFetch<{ product: Product; variants: unknown[]; collection_ids?: string[] }>(`/api/v1/products/${id}`, {
-      auth: false,
-    }),
+    apiFetch<{ product: Product; variants: unknown[]; collection_ids?: string[]; category_id?: string | null }>(
+      `/api/v1/products/${id}`,
+      {
+        auth: false,
+      },
+    ),
   setPrice: (id: string, payload: ChannelPrice) =>
     apiFetch<ChannelPrice>(`/api/v1/products/${id}/prices`, {
       method: "PUT",
@@ -482,31 +485,56 @@ export const api = {
   },
 
   // ─── Product Module (Shopify-style) ──────────────────────────────────────
-  createProductV2: (payload: ProductCreatePayload) =>
-    apiFetch<ProductDetail>("/api/v1/products/", {
+  createProductV2: (payload: ProductCreatePayload) => {
+    // Go expects string prices/costs and integer quantities; coerce so saves never 400 on JSON decode.
+    const strPrice = (x: unknown, fallback = "0"): string => {
+      if (x == null || x === "") return fallback;
+      return String(x);
+    };
+    const optPrice = (x: unknown): string | undefined => {
+      if (x == null || x === "") return undefined;
+      const s = String(x).trim();
+      return s === "" ? undefined : s;
+    };
+    const coerceQty = (q: unknown): number => {
+      if (typeof q === "number" && Number.isFinite(q)) return Math.max(0, Math.floor(q));
+      if (q == null || q === "") return 0;
+      const n = Number.parseInt(String(q), 10);
+      return Number.isFinite(n) && n >= 0 ? n : 0;
+    };
+
+    const { variants: rawVariants, title, category_id, ...rest } = payload;
+    const variants = (rawVariants ?? []).map((v) => ({
+      sku: v.sku,
+      barcode: v.barcode,
+      color: v.options?.["Color"],
+      size: v.options?.["Size"],
+      weight_g: v.weight_g,
+      image_url: v.media?.[0]?.url,
+      media_urls: (v.media ?? []).map((m) => m.url).filter(Boolean),
+      price: strPrice(v.price, "0"),
+      sale_price: optPrice(v.sale_price),
+      cost: strPrice(v.cost, "0"),
+      quantity: coerceQty(v.quantity),
+    }));
+
+    const body: Record<string, unknown> = {
+      ...rest,
+      name: title ?? (rest as { name?: string }).name ?? "",
+      track_inventory: payload.track_inventory ?? true,
+      warehouse_id: payload.warehouse_id ?? undefined,
+      vat_type: payload.vat_type ?? "standard",
+      country_of_origin: payload.country_of_origin ?? "AE",
+      variants,
+    };
+    if (category_id != null && String(category_id).trim() !== "") {
+      body.category_id = String(category_id).trim();
+    }
+    return apiFetch<ProductDetail>("/api/v1/products/", {
       method: "POST",
-      body: JSON.stringify({
-        ...payload,
-        name: payload.title,
-        track_inventory: payload.track_inventory ?? true,
-        warehouse_id: payload.warehouse_id ?? undefined,
-        vat_type: payload.vat_type ?? "standard",
-        country_of_origin: payload.country_of_origin ?? "AE",
-        variants: (payload.variants ?? []).map((v) => ({
-          sku: v.sku,
-          barcode: v.barcode,
-          color: v.options?.["Color"],
-          size: v.options?.["Size"],
-          weight_g: v.weight_g,
-          image_url: v.media?.[0]?.url,
-          media_urls: (v.media ?? []).map((m) => m.url).filter(Boolean),
-          price: v.price,
-          sale_price: v.sale_price,
-          cost: v.cost,
-          quantity: v.quantity,
-        })),
-      }),
-    }),
+      body: JSON.stringify(body),
+    });
+  },
 
   createDraftProduct: () =>
     apiFetch<Product>("/admin/products/drafts", {
