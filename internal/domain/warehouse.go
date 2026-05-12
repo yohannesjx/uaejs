@@ -76,6 +76,10 @@ type InventoryListItem struct {
 	WarehouseName     string    `json:"warehouse"`
 	// UnitCost is optional per-variant cost (same currency as prices, typically AED).
 	UnitCost *string `json:"unit_cost,omitempty"`
+	// RegularPrice is the variant's active channel list price (text decimal), when set.
+	RegularPrice *string `json:"regular_price,omitempty"`
+	// StockValueAtRevenue is available_quantity * regular_price (0 if price unset).
+	StockValueAtRevenue string `json:"stock_value_at_revenue"`
 	// StockValueAtCost is available_quantity * unit_cost (0 if unit_cost unset).
 	StockValueAtCost string `json:"stock_value_at_cost"`
 	AvailableQuantity int       `json:"available_quantity"`

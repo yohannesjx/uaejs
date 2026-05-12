@@ -583,6 +583,10 @@ export interface InventoryListItem {
   warehouse: string;
   /** Per-unit cost when configured on the variant (AED). */
   unit_cost?: string | null;
+  /** Active list price from channel prices, when set. */
+  regular_price?: string | null;
+  /** available_quantity × regular_price (0 if price unset). */
+  stock_value_at_revenue?: string;
   /** available_quantity × unit_cost (string decimal). */
   stock_value_at_cost: string;
   available_quantity: number;

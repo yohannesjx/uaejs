@@ -277,6 +277,24 @@ func (r *WarehouseRepository) ListInventoryRows(
 			w.id AS warehouse_id,
 			w.name AS warehouse_name,
 			v.unit_cost::text AS unit_cost,
+			(
+				SELECT cp.price::text
+				FROM channel_prices cp
+				JOIN channels c ON c.id = cp.channel_id AND c.is_active = TRUE
+				WHERE cp.variant_id = v.id
+				  AND cp.is_active = TRUE
+				ORDER BY cp.effective_from DESC
+				LIMIT 1
+			) AS regular_price,
+			(ws.qty_available * COALESCE((
+				SELECT cp.price::numeric
+				FROM channel_prices cp
+				JOIN channels c ON c.id = cp.channel_id AND c.is_active = TRUE
+				WHERE cp.variant_id = v.id
+				  AND cp.is_active = TRUE
+				ORDER BY cp.effective_from DESC
+				LIMIT 1
+			), 0))::text AS stock_value_at_revenue,
 			(ws.qty_available::numeric * COALESCE(v.unit_cost, 0))::text AS stock_value_at_cost,
 			ws.qty_available,
 			ws.qty_reserved,
@@ -318,6 +336,7 @@ func (r *WarehouseRepository) ListInventoryRows(
 	for rows.Next() {
 		var it domain.InventoryListItem
 		var unitCost sql.NullString
+		var regularPrice sql.NullString
 		if err := rows.Scan(
 			&it.ProductID,
 			&it.ProductName,
@@ -328,6 +347,8 @@ func (r *WarehouseRepository) ListInventoryRows(
 			&it.WarehouseID,
 			&it.WarehouseName,
 			&unitCost,
+			&regularPrice,
+			&it.StockValueAtRevenue,
 			&it.StockValueAtCost,
 			&it.AvailableQuantity,
 			&it.ReservedQuantity,
@@ -338,6 +359,10 @@ func (r *WarehouseRepository) ListInventoryRows(
 		if unitCost.Valid && strings.TrimSpace(unitCost.String) != "" {
 			s := strings.TrimSpace(unitCost.String)
 			it.UnitCost = &s
+		}
+		if regularPrice.Valid && strings.TrimSpace(regularPrice.String) != "" {
+			s := strings.TrimSpace(regularPrice.String)
+			it.RegularPrice = &s
 		}
 		items = append(items, it)
 	}
