@@ -75,7 +75,23 @@
   const pageTitle = $derived(product ? `${product.title} | Noir Drop` : "Product | Noir Drop");
   const pageDescription = $derived(product?.description || "Product details and related looks.");
   const availableColorSwatches = $derived(product ? product.colorSwatches : []);
-  const availableColors = $derived(availableColorSwatches.map((s) => s.name));
+
+  /** Show sizes when any variant has a real size (e.g. single "M"). Hide only the default "[\"\"]" → "One size" placeholder when no size was set on variants. */
+  const hasSizePicker = $derived.by(() => {
+    if (!product) return false;
+    return product.sizeOptions.some((s) => dim(s) !== "");
+  });
+
+  const hasColorPicker = $derived.by(() => {
+    if (!product) return false;
+    const set = new Set<string>();
+    for (const sw of product.colorSwatches) {
+      const n = dim(sw.name);
+      if (!n || n.toLowerCase() === "unknown") continue;
+      set.add(n);
+    }
+    return set.size > 1;
+  });
   const selectedVariantStock = $derived.by(() => {
     if (!product) return 0;
     const selSz = dim(selectedSize);
@@ -319,8 +335,8 @@
       </div>
 
       <div class="space-y-6">
-        <!-- Color -->
-        {#if availableColors.length > 0}
+        <!-- Color (only when multiple real colors — hide single default swatch) -->
+        {#if hasColorPicker}
         <div class="space-y-3">
           <div class="flex items-center justify-between">
             <span class="text-xs font-bold uppercase tracking-widest">Color <span class="text-zinc-500 font-normal ml-2">{selectedColor}</span></span>
@@ -346,7 +362,8 @@
         </div>
         {/if}
 
-        <!-- Size -->
+        <!-- Size (only when multiple distinct sizes — hide "One size" / default-only) -->
+        {#if hasSizePicker}
         <div class="space-y-3">
           <div class="flex items-center justify-between">
             <span class="text-xs font-bold uppercase tracking-widest">Size</span>
@@ -365,6 +382,7 @@
             {/each}
           </div>
         </div>
+        {/if}
 
         <!-- Desktop Add to Cart -->
         <div class="pt-6 hidden lg:block">
