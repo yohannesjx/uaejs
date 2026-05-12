@@ -37,19 +37,6 @@
     return (s ?? "").trim();
   }
 
-  /** Same image URL twice (e.g. thumbnail + hero) should count as one PDP photo. */
-  function dedupeImageUrls(urls: string[]): string[] {
-    const seen = new Set<string>();
-    const out: string[] = [];
-    for (const u of urls) {
-      const t = (u ?? "").trim();
-      if (!t || seen.has(t)) continue;
-      seen.add(t);
-      out.push(t);
-    }
-    return out;
-  }
-
   $effect(() => {
     const handle = page.params.handle ?? "";
     const syncProduct = () => getProduct(handle)
@@ -160,14 +147,6 @@
       : (product?.images ?? [])
   );
 
-  /** Unique gallery URLs; falls back to product thumbnail when the images array is empty. */
-  const galleryImages = $derived.by(() => {
-    const list = dedupeImageUrls(displayedImages);
-    if (list.length > 0) return list;
-    const fallback = product?.imageUrl?.trim() ?? "";
-    return fallback ? [fallback] : [];
-  });
-
   function colorToCss(colorName: string): string {
     const key = colorName.trim().toLowerCase();
     const map: Record<string, string> = {
@@ -217,13 +196,13 @@
   }
 
   function nextImage() {
-    if (!galleryImages.length) return;
-    lightboxIndex = (lightboxIndex + 1) % galleryImages.length;
+    if (!displayedImages.length) return;
+    lightboxIndex = (lightboxIndex + 1) % displayedImages.length;
   }
 
   function prevImage() {
-    if (!galleryImages.length) return;
-    lightboxIndex = (lightboxIndex - 1 + galleryImages.length) % galleryImages.length;
+    if (!displayedImages.length) return;
+    lightboxIndex = (lightboxIndex - 1 + displayedImages.length) % displayedImages.length;
   }
 
   function onLightboxKeydown(event: KeyboardEvent) {
@@ -326,30 +305,24 @@
   >
   <div class="-mx-4 md:-mx-6 xl:-mx-8 lg:mx-0 lg:grid lg:grid-cols-[1fr_400px] xl:grid-cols-[1fr_450px] lg:gap-12 lg:items-start">
     
-    <!-- Image Gallery: one unique URL → full width; multiple → horizontal snap strip (unchanged). -->
-    {#if galleryImages.length > 1}
-      <div class="flex overflow-x-auto snap-x snap-mandatory hide-scrollbar gap-[2px] lg:flex-col lg:overflow-visible lg:gap-4">
-        {#each galleryImages as img, idx}
+    <!-- Image Gallery -->
+    <div class="flex overflow-x-auto snap-x snap-mandatory hide-scrollbar gap-[2px] lg:flex-col lg:overflow-visible lg:gap-4">
+      {#if displayedImages.length > 1}
+        {#each displayedImages as img, idx}
           <div class="h-[630px] w-[378px] max-w-[88vw] shrink-0 snap-center overflow-hidden flex-none">
-            <button type="button" class="h-full w-full" onclick={() => openLightbox(idx)} aria-label={`Open image ${idx + 1}`}>
+            <button class="h-full w-full" onclick={() => openLightbox(idx)} aria-label={`Open image ${idx + 1}`}>
               <img src={img} class="h-full w-full object-cover object-center" alt={product.title} />
             </button>
           </div>
         {/each}
-      </div>
-    {:else}
-      <div class="w-full min-w-0 max-w-[88vw] mx-auto lg:max-w-none lg:mx-0">
-        <div class="w-full overflow-hidden">
-          <button type="button" class="block w-full touch-manipulation" onclick={() => openLightbox(0)} aria-label="Open product image">
-            <img
-              src={galleryImages[0] ?? product.imageUrl ?? ""}
-              class="w-full aspect-[3/4] object-cover object-center lg:aspect-auto lg:h-[630px] lg:w-full lg:max-w-full"
-              alt={product.title}
-            />
+      {:else}
+        <div class="h-[630px] w-[378px] max-w-[88vw] shrink-0 overflow-hidden flex-none">
+          <button class="h-full w-full" onclick={() => openLightbox(0)} aria-label="Open product image">
+            <img src={displayedImages[0] || product.imageUrl} class="h-full w-full object-cover object-center" alt={product.title} />
           </button>
         </div>
-      </div>
-    {/if}
+      {/if}
+    </div>
 
     <!-- Product Details (Sticky on Desktop); swipe-right-back on mobile via data attr -->
     <div
@@ -479,7 +452,7 @@
         &times;
       </button>
 
-      {#if galleryImages.length > 1}
+      {#if displayedImages.length > 1}
         <button class="absolute left-4 top-1/2 z-20 -translate-y-1/2 text-white/90 text-4xl leading-none hidden md:block" onclick={prevImage} aria-label="Previous image">
           &#10094;
         </button>
@@ -489,9 +462,9 @@
       {/if}
 
       <div class="flex h-full w-full items-center justify-center px-4">
-        {#key `${lightboxIndex}-${galleryImages[lightboxIndex]}`}
+        {#key `${lightboxIndex}-${displayedImages[lightboxIndex]}`}
           <img
-            src={galleryImages[lightboxIndex] ?? product.imageUrl ?? ""}
+            src={displayedImages[lightboxIndex]}
             alt={`${product.title} image ${lightboxIndex + 1}`}
             class="max-h-[92vh] max-w-[96vw] object-contain"
             transition:fade={{ duration: 180 }}
@@ -499,9 +472,9 @@
         {/key}
       </div>
 
-      {#if galleryImages.length > 1}
+      {#if displayedImages.length > 1}
         <div class="absolute bottom-6 left-1/2 -translate-x-1/2 text-white/80 text-xs tracking-widest">
-          {lightboxIndex + 1} / {galleryImages.length}
+          {lightboxIndex + 1} / {displayedImages.length}
         </div>
       {/if}
     </div>
