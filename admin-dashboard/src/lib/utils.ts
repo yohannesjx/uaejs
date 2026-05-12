@@ -31,6 +31,14 @@ export function formatCurrency(
   }).format(numeric);
 }
 
+/** Amount for dense tables: two decimals, no currency code or symbol. */
+export function formatAmountPlain(value?: string | number | null): string {
+  if (value === null || value === undefined || value === "") return "—";
+  const numeric = typeof value === "number" ? value : Number.parseFloat(String(value));
+  if (Number.isNaN(numeric)) return String(value);
+  return numeric.toFixed(2);
+}
+
 export function getInitials(value?: string | null) {
   if (!value) return "DU";
   return value

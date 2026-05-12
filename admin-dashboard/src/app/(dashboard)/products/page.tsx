@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/primitives";
 import { MediaLibraryModal } from "@/components/media/media-library-modal";
 import { api, publicUploadUrl } from "@/lib/api-client";
-import { formatCurrency } from "@/lib/utils";
+import { formatAmountPlain } from "@/lib/utils";
 import type { InventoryListItem, MediaAsset, ProductCategory } from "@/types/api";
 
 type VariantDraft = {
@@ -436,8 +436,8 @@ export default function ProductsPage() {
                     <th className="px-4 py-3 text-left font-medium text-[var(--muted-foreground)] whitespace-nowrap">Product</th>
                     <th className="px-4 py-3 text-left font-medium text-[var(--muted-foreground)] whitespace-nowrap">SKU</th>
                     <th className="px-4 py-3 text-left font-medium text-[var(--muted-foreground)] whitespace-nowrap">Inventory</th>
-                    <th className="px-4 py-3 text-left font-medium text-[var(--muted-foreground)] whitespace-nowrap">Price (AED)</th>
-                    <th className="px-4 py-3 text-left font-medium text-[var(--muted-foreground)] whitespace-nowrap">Sale Price (AED)</th>
+                    <th className="px-4 py-3 text-left font-medium text-[var(--muted-foreground)] whitespace-nowrap">Price</th>
+                    <th className="px-4 py-3 text-left font-medium text-[var(--muted-foreground)] whitespace-nowrap">Sale price</th>
                     <th className="px-4 py-3 text-center font-medium text-[var(--muted-foreground)] whitespace-nowrap">Status</th>
                     <th className="px-4 py-3 text-right font-medium text-[var(--muted-foreground)] whitespace-nowrap">Actions</th>
                   </tr>
@@ -512,17 +512,13 @@ export default function ProductsPage() {
                             {(() => {
                               const rows = inventoryByProduct.get(row.product_id) ?? [];
                               const totalAvailable = rows.reduce((acc, curr) => acc + curr.available_quantity, 0);
-                              const locationCount = new Set(rows.map((x) => x.warehouse_id)).size;
                               return (
                                 <div
                                   className="relative"
                                   onMouseEnter={() => setHoverInventoryProduct(row.product_id)}
                                   onMouseLeave={() => setHoverInventoryProduct(null)}
                                 >
-                                  <div className="font-medium text-[var(--foreground)]">Available: {totalAvailable} units</div>
-                                  {locationCount > 1 && (
-                                    <div className="text-xs text-[var(--muted-foreground)]">Across {locationCount} locations</div>
-                                  )}
+                                  <div className="font-medium tabular-nums text-[var(--foreground)]">{totalAvailable}</div>
                                   {hoverInventoryProduct === row.product_id && rows.length > 0 && (
                                     <div className="absolute left-0 top-10 z-20 min-w-[220px] rounded-lg border border-[var(--border)] bg-[var(--panel)] p-2 shadow-lg">
                                       {Object.entries(rows.reduce<Record<string, number>>((acc, r) => {
@@ -572,7 +568,7 @@ export default function ProductsPage() {
                               </div>
                             ) : (
                               <button type="button" className="font-medium hover:underline text-[var(--foreground)]" onClick={() => setEditingPrice(row.product_id)}>
-                                {formatCurrency(rowEditor(row).price)}
+                                {formatAmountPlain(rowEditor(row).price)}
                               </button>
                             )}
                           </td>
@@ -608,7 +604,7 @@ export default function ProductsPage() {
                               </div>
                             ) : (
                               <button type="button" className="text-[var(--muted-foreground)] hover:underline hover:text-black font-medium" onClick={() => setEditingSalePrice(row.product_id)}>
-                                {rowEditor(row).sale_price ? formatCurrency(rowEditor(row).sale_price!) : "Add Sale"}
+                                {rowEditor(row).sale_price ? formatAmountPlain(rowEditor(row).sale_price!) : "Add Sale"}
                               </button>
                             )}
                           </td>
@@ -773,9 +769,9 @@ export default function ProductsPage() {
                                 <span className="font-mono text-xs text-[var(--muted-foreground)]">{v.sku || "—"}</span>
                               </td>
                               <td className="px-4 py-4">
-                                <div className="text-xs text-[var(--muted-foreground)]">
-                                  Available: {inventoryByVariantDefaultWarehouse.get(v.id) ?? Number(v.quantity || 0)} units
-                                </div>
+                                <span className="font-medium tabular-nums text-[var(--foreground)]">
+                                  {inventoryByVariantDefaultWarehouse.get(v.id) ?? Number(v.quantity || 0)}
+                                </span>
                               </td>
                               <td className="px-4 py-4">
                                 {variantCellEdit?.variantId === v.id && variantCellEdit.field === "price" ? (
@@ -804,7 +800,7 @@ export default function ProductsPage() {
                                     className="font-medium text-[var(--foreground)] hover:underline"
                                     onClick={() => setVariantCellEdit({ variantId: v.id, field: "price" })}
                                   >
-                                    {formatCurrency(v.price || row.price)}
+                                    {formatAmountPlain(v.price || row.price)}
                                   </button>
                                 )}
                               </td>
@@ -834,7 +830,7 @@ export default function ProductsPage() {
                                     className="text-xs font-medium text-[var(--muted-foreground)] hover:text-black hover:underline"
                                     onClick={() => setVariantCellEdit({ variantId: v.id, field: "sale_price" })}
                                   >
-                                    {v.sale_price ? formatCurrency(v.sale_price) : "Add Sale"}
+                                    {v.sale_price ? formatAmountPlain(v.sale_price) : "Add Sale"}
                                   </button>
                                 )}
                               </td>
