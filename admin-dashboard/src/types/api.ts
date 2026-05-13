@@ -422,6 +422,8 @@ export interface ProductListItem {
   sku: string;
   category?: string | null;
   thumbnail?: string | null;
+  /** Unit cost (COGS) for the primary variant shown on the row, when set. */
+  cost?: string | null;
   price: DecimalString;
   stock: number;
   status: string;

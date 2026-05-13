@@ -589,6 +589,7 @@ func (r *ProductRepository) ListProducts(ctx context.Context, filters domain.Pro
 		       COALESCE(v.sku, '') AS sku,
 		       p.category,
 		       v.image_url AS thumbnail,
+		       v.unit_cost::text AS cost,
 		       COALESCE((SELECT cp.price FROM channel_prices cp
 		                JOIN channels c ON c.id = cp.channel_id AND c.is_active = TRUE
 		                WHERE cp.variant_id = v.id AND cp.is_active = TRUE
@@ -599,7 +600,7 @@ func (r *ProductRepository) ListProducts(ctx context.Context, filters domain.Pro
 		       p.created_at
 		  FROM products p
 		  LEFT JOIN LATERAL (
-		      SELECT id, sku, image_url
+		      SELECT id, sku, image_url, unit_cost
 		      FROM variants
 		      WHERE product_id = p.id
 		        AND is_active = TRUE
@@ -621,11 +622,16 @@ func (r *ProductRepository) ListProducts(ctx context.Context, filters domain.Pro
 	for rows.Next() {
 		var it domain.ProductListItem
 		var price decimal.Decimal
+		var cost sql.NullString
 		if err := rows.Scan(&it.ID, &it.ProductID, &it.Name, &it.Slug, &it.SKU, &it.Category, &it.Thumbnail,
-			&price, &it.Stock, &it.Status, &it.CreatedAt); err != nil {
+			&cost, &price, &it.Stock, &it.Status, &it.CreatedAt); err != nil {
 			return nil, 0, fmt.Errorf("ListProducts scan: %w", err)
 		}
 		it.Price = price
+		if cost.Valid && strings.TrimSpace(cost.String) != "" {
+			s := strings.TrimSpace(cost.String)
+			it.Cost = &s
+		}
 		items = append(items, it)
 	}
 	return items, total, rows.Err()

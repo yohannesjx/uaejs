@@ -52,8 +52,9 @@ type ProductCollectionMembershipLinker interface {
 // =============================================================================
 
 // VariantInput is the payload for a single variant in CreateProductWithVariants.
+// SKU is ignored on create: the server assigns a unique JS-######## SKU per variant.
 type VariantInput struct {
-	SKU       string   `json:"sku"`
+	SKU       string   `json:"sku,omitempty"`
 	Barcode   *string  `json:"barcode,omitempty"`
 	Color     *string  `json:"color,omitempty"`
 	Size      *string  `json:"size,omitempty"`
@@ -400,7 +401,10 @@ func (s *ProductService) CreateProductWithVariants(
 	variants := make([]*domain.Variant, 0, len(input.Variants))
 
 	for _, vi := range input.Variants {
-		skuStr := strings.ToUpper(strings.TrimSpace(vi.SKU))
+		skuStr, err := generateUniqueJSVariantSKU(ctx, tx)
+		if err != nil {
+			return nil, fmt.Errorf("CreateProductWithVariants: allocate sku: %w", err)
+		}
 		variant := &domain.Variant{
 			ID:        uuid.New(),
 			ProductID: product.ID,
@@ -415,28 +419,28 @@ func (s *ProductService) CreateProductWithVariants(
 		}
 		costPtr, err := normalizeVariantUnitCost(vi.Cost)
 		if err != nil {
-			return nil, fmt.Errorf("CreateProductWithVariants: invalid cost for %v: %w", variant.SKU, err)
+			return nil, fmt.Errorf("CreateProductWithVariants: invalid cost for %s: %w", skuStr, err)
 		}
 		variant.Cost = costPtr
 
 		if err := s.repo.InsertVariant(ctx, tx, variant); err != nil {
 			if isUniqueViolation(err) {
-				return nil, fmt.Errorf("%w: %v", ErrDuplicateSKU, variant.SKU)
+				return nil, fmt.Errorf("%w: %s", ErrDuplicateSKU, skuStr)
 			}
-			return nil, fmt.Errorf("CreateProductWithVariants: insert variant %v: %w", variant.SKU, err)
+			return nil, fmt.Errorf("CreateProductWithVariants: insert variant %s: %w", skuStr, err)
 		}
 		if err := s.repo.ReplaceVariantMedia(ctx, tx, variant.ID, variant.MediaURLs); err != nil {
-			return nil, fmt.Errorf("CreateProductWithVariants: set variant media for %v: %w", variant.SKU, err)
+			return nil, fmt.Errorf("CreateProductWithVariants: set variant media for %s: %w", skuStr, err)
 		}
 
 		if err := s.repo.InitInventory(ctx, tx, variant.ID); err != nil {
-			return nil, fmt.Errorf("CreateProductWithVariants: init inventory for %v: %w", variant.SKU, err)
+			return nil, fmt.Errorf("CreateProductWithVariants: init inventory for %s: %w", skuStr, err)
 		}
 
 		if vi.Quantity != nil {
 			_, err := tx.Exec(ctx, "UPDATE inventory SET quantity_on_hand = $1, updated_at = NOW() AT TIME ZONE 'UTC' WHERE variant_id = $2", *vi.Quantity, variant.ID)
 			if err != nil {
-				return nil, fmt.Errorf("CreateProductWithVariants: set inventory qty for %v: %w", variant.SKU, err)
+				return nil, fmt.Errorf("CreateProductWithVariants: set inventory qty for %s: %w", skuStr, err)
 			}
 		}
 		if input.TrackInventory && defaultWarehouseID != nil {
@@ -457,7 +461,7 @@ func (s *ProductService) CreateProductWithVariants(
 				if isUndefinedTable(err) {
 					s.log.Warn("warehouse_stock table missing; skipping warehouse stock write on create", zap.Error(err))
 				} else {
-					return nil, fmt.Errorf("CreateProductWithVariants: set warehouse stock for %v: %w", variant.SKU, err)
+					return nil, fmt.Errorf("CreateProductWithVariants: set warehouse stock for %s: %w", skuStr, err)
 				}
 			}
 			_, err = tx.Exec(ctx, `
@@ -466,7 +470,7 @@ func (s *ProductService) CreateProductWithVariants(
 				 WHERE variant_id = $2
 			`, qty, variant.ID)
 			if err != nil {
-				return nil, fmt.Errorf("CreateProductWithVariants: sync global inventory for %v: %w", variant.SKU, err)
+				return nil, fmt.Errorf("CreateProductWithVariants: sync global inventory for %s: %w", skuStr, err)
 			}
 		}
 
@@ -476,7 +480,7 @@ func (s *ProductService) CreateProductWithVariants(
 			if vi.Price != nil && strings.TrimSpace(*vi.Price) != "" {
 				p, err := decimal.NewFromString(strings.TrimSpace(*vi.Price))
 				if err != nil {
-					return nil, fmt.Errorf("CreateProductWithVariants: invalid price for %v: %w", variant.SKU, err)
+					return nil, fmt.Errorf("CreateProductWithVariants: invalid price for %s: %w", skuStr, err)
 				}
 				_, err = tx.Exec(ctx, `
 					INSERT INTO channel_prices
@@ -487,14 +491,14 @@ func (s *ProductService) CreateProductWithVariants(
 					uuid.New(), variant.ID, activeChannelID, p,
 				)
 				if err != nil {
-					return nil, fmt.Errorf("CreateProductWithVariants: set price for %v: %w", variant.SKU, err)
+					return nil, fmt.Errorf("CreateProductWithVariants: set price for %s: %w", skuStr, err)
 				}
 			}
 
 			if vi.SalePrice != nil && strings.TrimSpace(*vi.SalePrice) != "" {
 				sp, err := decimal.NewFromString(strings.TrimSpace(*vi.SalePrice))
 				if err != nil {
-					return nil, fmt.Errorf("CreateProductWithVariants: invalid sale price for %v: %w", variant.SKU, err)
+					return nil, fmt.Errorf("CreateProductWithVariants: invalid sale price for %s: %w", skuStr, err)
 				}
 				_, err = tx.Exec(ctx, `
 					INSERT INTO price_promotions
@@ -503,7 +507,7 @@ func (s *ProductService) CreateProductWithVariants(
 					uuid.New(), variant.ID, activeChannelID, sp,
 				)
 				if err != nil {
-					return nil, fmt.Errorf("CreateProductWithVariants: set sale price for %v: %w", variant.SKU, err)
+					return nil, fmt.Errorf("CreateProductWithVariants: set sale price for %s: %w", skuStr, err)
 				}
 			}
 		}
@@ -654,6 +658,12 @@ func (s *ProductService) ListProducts(ctx context.Context, filters domain.Produc
 		return nil, fmt.Errorf("ListProducts: %w", err)
 	}
 
+	if filters.PublicCatalog {
+		for i := range items {
+			items[i].Cost = nil
+		}
+	}
+
 	return &domain.PageResponse[domain.ProductListItem]{
 		Items: items,
 		Total: total,
@@ -676,16 +686,15 @@ func (s *ProductService) UpsertDefaultVariantForProduct(ctx context.Context, pro
 		return nil, fmt.Errorf("UpsertDefaultVariantForProduct list variants: %w", err)
 	}
 
-	sku := strings.ToUpper(strings.TrimSpace(input.SKU))
-	if sku == "" {
-		sku = fmt.Sprintf("SKU-%s", strings.ToUpper(productID.String()[:8]))
-	}
-
 	if len(variants) == 0 {
+		skuStr, err := generateUniqueJSVariantSKU(ctx, tx)
+		if err != nil {
+			return nil, fmt.Errorf("UpsertDefaultVariantForProduct allocate sku: %w", err)
+		}
 		v := &domain.Variant{
 			ID:        uuid.New(),
 			ProductID: productID,
-			SKU:       &sku,
+			SKU:       &skuStr,
 			Color:     input.Color,
 			Size:      input.Size,
 			ImageURL:  input.ImageURL,
@@ -713,7 +722,9 @@ func (s *ProductService) UpsertDefaultVariantForProduct(ctx context.Context, pro
 	}
 
 	v := variants[0]
-	v.SKU = &sku
+	if s := strings.ToUpper(strings.TrimSpace(input.SKU)); s != "" {
+		v.SKU = &s
+	}
 	if input.Color != nil {
 		v.Color = input.Color
 	}
@@ -743,14 +754,10 @@ func (s *ProductService) UpsertDefaultVariantForProduct(ctx context.Context, pro
 }
 
 func (s *ProductService) CreateVariantForProduct(ctx context.Context, productID uuid.UUID, input UpsertVariantInput) (*domain.Variant, error) {
-	if strings.TrimSpace(input.SKU) == "" {
-		return nil, fmt.Errorf("SKU is required")
-	}
 	if _, err := s.repo.GetProductByID(ctx, productID); err != nil {
 		return nil, fmt.Errorf("CreateVariantForProduct get product: %w", err)
 	}
 
-	sku := strings.ToUpper(strings.TrimSpace(input.SKU))
 	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("CreateVariantForProduct begin tx: %w", err)
@@ -761,10 +768,15 @@ func (s *ProductService) CreateVariantForProduct(ctx context.Context, productID 
 		}
 	}()
 
+	skuStr, err := generateUniqueJSVariantSKU(ctx, tx)
+	if err != nil {
+		return nil, fmt.Errorf("CreateVariantForProduct allocate sku: %w", err)
+	}
+
 	v := &domain.Variant{
 		ID:        uuid.New(),
 		ProductID: productID,
-		SKU:       &sku,
+		SKU:       &skuStr,
 		Color:     input.Color,
 		Size:      input.Size,
 		ImageURL:  input.ImageURL,
@@ -865,11 +877,13 @@ func (s *ProductService) UpdateVariant(ctx context.Context, variantID uuid.UUID,
 	existing.Color = input.Color
 	existing.Size = input.Size
 	existing.ImageURL = input.ImageURL
-	costPtr, err := normalizeVariantUnitCost(input.Cost)
-	if err != nil {
-		return fmt.Errorf("UpdateVariant cost: %w", err)
+	if input.Cost != nil {
+		costPtr, err := normalizeVariantUnitCost(input.Cost)
+		if err != nil {
+			return fmt.Errorf("UpdateVariant cost: %w", err)
+		}
+		existing.Cost = costPtr
 	}
-	existing.Cost = costPtr
 	existing.MediaURLs = normalizeMediaURLs(input.MediaURLs)
 	if err := s.repo.UpdateVariant(ctx, tx, existing); err != nil {
 		return fmt.Errorf("UpdateVariant persist: %w", err)
@@ -1134,7 +1148,7 @@ func randomJSVariant8Digit() string {
 	}
 	n := binary.BigEndian.Uint32(b[:])
 	n = n%90000000 + 10000000
-	return fmt.Sprintf("JS-%d", n)
+	return fmt.Sprintf("JS-%08d", n)
 }
 
 func generateUniqueJSVariantSKU(ctx context.Context, tx pgx.Tx) (string, error) {
@@ -1171,17 +1185,6 @@ func validateCreateProductInput(input CreateProductInput) error {
 	}
 	if len(input.Variants) == 0 {
 		return fmt.Errorf("at least one variant is required")
-	}
-	seen := make(map[string]struct{}, len(input.Variants))
-	for _, v := range input.Variants {
-		sku := strings.ToUpper(strings.TrimSpace(v.SKU))
-		if sku == "" {
-			return fmt.Errorf("variant SKU is required")
-		}
-		if _, dup := seen[sku]; dup {
-			return fmt.Errorf("duplicate SKU in request: %s", sku)
-		}
-		seen[sku] = struct{}{}
 	}
 	return nil
 }

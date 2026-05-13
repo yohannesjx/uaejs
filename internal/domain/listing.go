@@ -25,6 +25,8 @@ type ProductListFilters struct {
 	CollectionID   *uuid.UUID
 	// AggregateVariantInventory sums quantity_available across active variants (admin picker UX).
 	AggregateVariantInventory bool
+	// PublicCatalog strips unit cost from each row (used by unauthenticated product list).
+	PublicCatalog bool
 }
 
 // ProductListItem is a single row in the products list.
@@ -36,6 +38,8 @@ type ProductListItem struct {
 	SKU       string          `json:"sku"`
 	Category  *string         `json:"category,omitempty"`
 	Thumbnail *string         `json:"thumbnail,omitempty"`
+	// Cost is unit cost (COGS) for the primary list variant, when set.
+	Cost      *string         `json:"cost,omitempty"`
 	Price     decimal.Decimal `json:"price"`
 	Stock     int             `json:"stock"`
 	Status    string          `json:"status"`

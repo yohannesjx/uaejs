@@ -100,6 +100,7 @@ func listPublicProductsHandler(svcs *service.Services, log *zap.Logger) http.Han
 			Category:     r.URL.Query().Get("category"),
 			WarehouseID:  parseOptionalUUID(r.URL.Query().Get("warehouse_id")),
 			CollectionID: filterCollectionID,
+			PublicCatalog: true,
 		}
 
 		resp, err := svcs.Product.ListProducts(r.Context(), filters)

@@ -25,6 +25,7 @@ type VariantDraft = {
   image_url?: string;
   price?: string;
   sale_price?: string;
+  cost?: string;
   quantity?: string;
 };
 
@@ -51,10 +52,11 @@ export default function ProductsPage() {
   const [confirmBulkDeleteOpen, setConfirmBulkDeleteOpen] = useState(false);
   const [assignCategoriesOpen, setAssignCategoriesOpen] = useState(false);
   const [selectedCategoryIds, setSelectedCategoryIds] = useState<string[]>([]);
-  const [editingRows, setEditingRows] = useState<Record<string, { title: string; price: string; sale_price?: string; stock: string }>>({});
+  const [editingRows, setEditingRows] = useState<Record<string, { title: string; price: string; sale_price?: string; stock: string; cost: string }>>({});
   const [editingPrice, setEditingPrice] = useState<string | null>(null);
   const [editingSalePrice, setEditingSalePrice] = useState<string | null>(null);
-  const [variantCellEdit, setVariantCellEdit] = useState<{ variantId: string; field: "sku" | "price" | "sale_price" | "quantity" | "size" | "color" } | null>(null);
+  const [editingCost, setEditingCost] = useState<string | null>(null);
+  const [variantCellEdit, setVariantCellEdit] = useState<{ variantId: string; field: "sku" | "price" | "sale_price" | "cost" | "quantity" | "size" | "color" } | null>(null);
   const [hoverInventoryProduct, setHoverInventoryProduct] = useState<string | null>(null);
   const pageSize = 25;
 
@@ -103,6 +105,10 @@ export default function ProductsPage() {
             image_url: v.image_url as string || "",
             price: v.price && !isNaN(parseFloat(String(v.price))) ? parseFloat(String(v.price)).toFixed(2) : String(v.price ?? ""),
             sale_price: v.sale_price && !isNaN(parseFloat(String(v.sale_price))) ? parseFloat(String(v.sale_price)).toFixed(2) : String(v.sale_price ?? ""),
+            cost:
+              v.cost != null && String(v.cost).trim() !== "" && !isNaN(parseFloat(String(v.cost)))
+                ? parseFloat(String(v.cost)).toFixed(2)
+                : String(v.cost ?? "").trim(),
             quantity: String(v.quantity ?? ""),
           }));
         }),
@@ -130,8 +136,17 @@ export default function ProductsPage() {
   const [variantEdits, setVariantEdits] = useState<Record<string, VariantDraft[]>>({});
 
   const patchVariant = useMutation({
-    mutationFn: async (v: VariantDraft) =>
-      api.patchVariant(v.id, {
+    mutationFn: async (v: VariantDraft) => {
+      const payload: {
+        sku: string;
+        color?: string;
+        size?: string;
+        image_url?: string;
+        price?: string;
+        sale_price?: string;
+        cost?: string;
+        quantity?: number;
+      } = {
         sku: v.sku,
         color: v.color || undefined,
         size: v.size || undefined,
@@ -139,7 +154,12 @@ export default function ProductsPage() {
         price: v.price || undefined,
         sale_price: v.sale_price || undefined,
         quantity: v.quantity === undefined || v.quantity === "" ? undefined : Number(v.quantity),
-      }),
+      };
+      if (v.cost !== undefined) {
+        payload.cost = String(v.cost ?? "").trim();
+      }
+      return api.patchVariant(v.id, payload);
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["products"] });
       queryClient.invalidateQueries({ queryKey: ["products-list-expanded-details"] });
@@ -233,6 +253,9 @@ export default function ProductsPage() {
               media_urls: [imageUrl],
               price: v.price != null ? String(v.price) : undefined,
               sale_price: v.sale_price != null ? String(v.sale_price) : undefined,
+              ...(v.cost !== undefined && v.cost !== null
+                ? { cost: String(v.cost).trim() }
+                : {}),
               quantity:
                 typeof v.quantity === "number"
                   ? v.quantity
@@ -262,8 +285,14 @@ export default function ProductsPage() {
   const getVariants = (productId: string) => variantEdits[productId] ?? editRows[productId] ?? [];
   const getVariantById = (productId: string, variantId: string) =>
     getVariants(productId).find((x) => x.id === variantId);
-  const rowEditor = (row: { product_id: string; name: string; price: string; stock: number; sale_price?: string }) =>
-    editingRows[row.product_id] ?? { title: row.name, price: row.price, stock: String(row.stock), sale_price: row.sale_price ?? "" };
+  const rowEditor = (row: { product_id: string; name: string; price: string; stock: number; sale_price?: string; cost?: string | null }) =>
+    editingRows[row.product_id] ?? {
+      title: row.name,
+      price: row.price,
+      stock: String(row.stock),
+      sale_price: row.sale_price ?? "",
+      cost: row.cost ?? "",
+    };
   const inventoryByProduct = useMemo(() => {
     const map = new Map<string, InventoryListItem[]>();
     inventoryRows.forEach((row) => {
@@ -295,6 +324,20 @@ export default function ProductsPage() {
       });
       vars.forEach((v) => {
         patchVariant.mutate({ ...v, [field]: value });
+      });
+    }
+    queryClient.invalidateQueries({ queryKey: ["products"] });
+  };
+  const saveProductCost = async (row: { product_id: string }, value: string) => {
+    const vars = getVariants(row.product_id);
+    if (vars.length > 0) {
+      setVariantEdits((prev) => {
+        const next = [...vars];
+        const updated = next.map((v) => ({ ...v, cost: value }));
+        return { ...prev, [row.product_id]: updated };
+      });
+      vars.forEach((v) => {
+        patchVariant.mutate({ ...v, cost: value });
       });
     }
     queryClient.invalidateQueries({ queryKey: ["products"] });
@@ -412,7 +455,7 @@ export default function ProductsPage() {
             </div>
 
             <div className="overflow-x-auto w-full rounded-xl border border-[var(--border)]">
-              <table className="min-w-[1000px] w-full text-sm">
+              <table className="min-w-[1180px] w-full text-sm">
                 <thead className="border-b border-[var(--border)] bg-transparent">
                   <tr>
                     <th className="w-10 px-2 py-3 text-center">
@@ -436,6 +479,7 @@ export default function ProductsPage() {
                     <th className="px-4 py-3 text-left font-medium text-[var(--muted-foreground)] whitespace-nowrap">Product</th>
                     <th className="px-4 py-3 text-left font-medium text-[var(--muted-foreground)] whitespace-nowrap">SKU</th>
                     <th className="px-4 py-3 text-left font-medium text-[var(--muted-foreground)] whitespace-nowrap">Inventory</th>
+                    <th className="px-4 py-3 text-left font-medium text-[var(--muted-foreground)] whitespace-nowrap">Cost</th>
                     <th className="px-4 py-3 text-left font-medium text-[var(--muted-foreground)] whitespace-nowrap">Price</th>
                     <th className="px-4 py-3 text-left font-medium text-[var(--muted-foreground)] whitespace-nowrap">Sale price</th>
                     <th className="px-4 py-3 text-center font-medium text-[var(--muted-foreground)] whitespace-nowrap">Status</th>
@@ -535,6 +579,42 @@ export default function ProductsPage() {
                                 </div>
                               );
                             })()}
+                          </td>
+                          <td className="px-4 py-4">
+                            {editingCost === row.product_id ? (
+                              <div className="flex items-center gap-2">
+                                <Input
+                                  className="h-8 w-24"
+                                  value={rowEditor(row).cost}
+                                  onChange={(e) =>
+                                    setEditingRows((prev) => ({
+                                      ...prev,
+                                      [row.product_id]: {
+                                        ...rowEditor(row),
+                                        cost: e.target.value,
+                                      },
+                                    }))
+                                  }
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter") {
+                                      void saveProductCost(row, rowEditor(row).cost);
+                                      setEditingCost(null);
+                                    }
+                                  }}
+                                  autoFocus
+                                />
+                                <button type="button" className="rounded p-1 text-emerald-600 hover:bg-emerald-50" onClick={() => {
+                                  void saveProductCost(row, rowEditor(row).cost);
+                                  setEditingCost(null);
+                                }}>
+                                  <Check className="size-4" />
+                                </button>
+                              </div>
+                            ) : (
+                              <button type="button" className="font-medium tabular-nums hover:underline text-[var(--foreground)]" onClick={() => setEditingCost(row.product_id)}>
+                                {rowEditor(row).cost?.trim() ? formatAmountPlain(rowEditor(row).cost) : "—"}
+                              </button>
+                            )}
                           </td>
                           <td className="px-4 py-4">
                             {editingPrice === row.product_id ? (
@@ -774,6 +854,37 @@ export default function ProductsPage() {
                                 </span>
                               </td>
                               <td className="px-4 py-4">
+                                {variantCellEdit?.variantId === v.id && variantCellEdit.field === "cost" ? (
+                                  <Input
+                                    className="h-8 w-24"
+                                    value={v.cost ?? ""}
+                                    onChange={(e) =>
+                                      setVariantEdits((prev) => {
+                                        const next = [...getVariants(row.product_id)];
+                                        const idx = next.findIndex((x) => x.id === v.id);
+                                        if (idx >= 0) next[idx] = { ...next[idx], cost: e.target.value };
+                                        return { ...prev, [row.product_id]: next };
+                                      })
+                                    }
+                                    onKeyDown={(e) => {
+                                      if (e.key === "Enter") {
+                                        patchVariant.mutate(getVariantById(row.product_id, v.id) || v);
+                                        setVariantCellEdit(null);
+                                      }
+                                    }}
+                                    autoFocus
+                                  />
+                                ) : (
+                                  <button
+                                    type="button"
+                                    className="font-medium tabular-nums text-[var(--foreground)] hover:underline"
+                                    onClick={() => setVariantCellEdit({ variantId: v.id, field: "cost" })}
+                                  >
+                                    {v.cost?.trim() ? formatAmountPlain(v.cost) : "—"}
+                                  </button>
+                                )}
+                              </td>
+                              <td className="px-4 py-4">
                                 {variantCellEdit?.variantId === v.id && variantCellEdit.field === "price" ? (
                                   <Input
                                     className="h-8 w-24"
@@ -897,7 +1008,7 @@ export default function ProductsPage() {
                             </tr>
                           )) : (
                             <tr className="bg-[var(--muted)]/20 border-t border-[var(--border)]/50">
-                              <td colSpan={9} className="px-4 py-4 text-sm text-[var(--muted-foreground)]">
+                              <td colSpan={10} className="px-4 py-4 text-sm text-[var(--muted-foreground)]">
                                 No variants for this product yet.
                               </td>
                             </tr>
