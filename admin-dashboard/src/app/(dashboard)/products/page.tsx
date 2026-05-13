@@ -295,6 +295,9 @@ export default function ProductsPage() {
       sale_price: row.sale_price ?? "",
       cost: row.cost ?? "",
     };
+  /** List rows use the latest variant id in `id` when it differs from `product_id` (see ListProducts SQL). */
+  const listRowPrimaryVariantId = (row: { id: string; product_id: string }) =>
+    row.id !== row.product_id ? row.id : null;
   const inventoryByProduct = useMemo(() => {
     const map = new Map<string, InventoryListItem[]>();
     inventoryRows.forEach((row) => {
@@ -313,36 +316,66 @@ export default function ProductsPage() {
     return map;
   }, [inventoryRows, defaultWarehouse]);
 
-  const saveProductPrice = async (row: { product_id: string }, field: "price" | "sale_price", value: string) => {
-    // 1. Update main product (if your backend supports sale_price on product, pass it, otherwise just price)
-    api.updateProduct(row.product_id, { [field]: value });
-    // 2. Cascade down to variants locally and via API
+  const saveProductPrice = async (
+    row: { product_id: string; id: string; sku: string },
+    field: "price" | "sale_price",
+    value: string,
+  ) => {
     const vars = getVariants(row.product_id);
-    if (vars.length > 0) {
-      setVariantEdits((prev) => {
-        const next = [...vars];
-        const updated = next.map((v) => ({ ...v, [field]: value }));
-        return { ...prev, [row.product_id]: updated };
-      });
-      vars.forEach((v) => {
-        patchVariant.mutate({ ...v, [field]: value });
-      });
+    const primaryVariantId = listRowPrimaryVariantId(row);
+    try {
+      if (vars.length > 0) {
+        setVariantEdits((prev) => {
+          const next = [...vars];
+          const updated = next.map((v) => ({ ...v, [field]: value }));
+          return { ...prev, [row.product_id]: updated };
+        });
+        await Promise.all(vars.map((v) => patchVariant.mutateAsync({ ...v, [field]: value })));
+      } else if (primaryVariantId) {
+        const sku = String(row.sku ?? "").trim();
+        if (!sku) {
+          toast.error("SKU is missing; open the product editor to set price.");
+          return;
+        }
+        await api.patchVariant(primaryVariantId, {
+          sku,
+          ...(field === "price" ? { price: value } : { sale_price: value }),
+        });
+        queryClient.invalidateQueries({ queryKey: ["products"] });
+        queryClient.invalidateQueries({ queryKey: ["products-list-expanded-details"] });
+      } else {
+        toast.message("Expand the product or open the editor to set prices.");
+      }
+    } catch {
+      toast.error("Could not update price");
     }
-    queryClient.invalidateQueries({ queryKey: ["products"] });
   };
-  const saveProductCost = async (row: { product_id: string }, value: string) => {
+  const saveProductCost = async (row: { product_id: string; id: string; sku: string }, value: string) => {
     const vars = getVariants(row.product_id);
-    if (vars.length > 0) {
-      setVariantEdits((prev) => {
-        const next = [...vars];
-        const updated = next.map((v) => ({ ...v, cost: value }));
-        return { ...prev, [row.product_id]: updated };
-      });
-      vars.forEach((v) => {
-        patchVariant.mutate({ ...v, cost: value });
-      });
+    const primaryVariantId = listRowPrimaryVariantId(row);
+    try {
+      if (vars.length > 0) {
+        setVariantEdits((prev) => {
+          const next = [...vars];
+          const updated = next.map((v) => ({ ...v, cost: value }));
+          return { ...prev, [row.product_id]: updated };
+        });
+        await Promise.all(vars.map((v) => patchVariant.mutateAsync({ ...v, cost: value })));
+      } else if (primaryVariantId) {
+        const sku = String(row.sku ?? "").trim();
+        if (!sku) {
+          toast.error("SKU is missing; open the product editor to set cost.");
+          return;
+        }
+        await api.patchVariant(primaryVariantId, { sku, cost: value });
+        queryClient.invalidateQueries({ queryKey: ["products"] });
+        queryClient.invalidateQueries({ queryKey: ["products-list-expanded-details"] });
+      } else {
+        toast.message("Expand the product to set cost on variants.");
+      }
+    } catch {
+      toast.error("Could not update cost");
     }
-    queryClient.invalidateQueries({ queryKey: ["products"] });
   };
   const saveProductTitle = async (row: { product_id: string }, title: string) => {
     const trimmed = title.trim();
@@ -360,11 +393,7 @@ export default function ProductsPage() {
       toast.error("Could not update title");
     }
   };
-  const commitVariantDefaultWarehouseQty = (
-    productId: string,
-    variantId: string,
-    quantityDraft: string,
-  ) => {
+  const commitVariantDefaultWarehouseQty = async (productId: string, variantId: string, quantityDraft: string) => {
     const v = getVariantById(productId, variantId);
     const q = parseInt(String(quantityDraft).trim(), 10);
     const target = isNaN(q) ? 0 : Math.max(0, q);
@@ -372,20 +401,27 @@ export default function ProductsPage() {
       inventoryByVariantDefaultWarehouse.get(variantId) ??
       Number(String(v?.quantity ?? "").trim() || 0);
     const delta = target - current;
-    if (delta !== 0 && defaultWarehouse) {
-      adjustInventory.mutate({
-        warehouseId: defaultWarehouse.id,
-        variantId,
-        adjustmentType: delta > 0 ? "increase" : "decrease",
-        quantity: Math.abs(delta),
-      });
+    try {
+      if (delta !== 0 && defaultWarehouse) {
+        await adjustInventory.mutateAsync({
+          warehouseId: defaultWarehouse.id,
+          variantId,
+          adjustmentType: delta > 0 ? "increase" : "decrease",
+          quantity: Math.abs(delta),
+        });
+      }
+    } catch {
+      toast.error("Could not adjust inventory");
     }
     setVariantCellEdit(null);
     queryClient.invalidateQueries({ queryKey: ["inventory-rows-products-page"] });
     queryClient.invalidateQueries({ queryKey: ["products"] });
     queryClient.invalidateQueries({ queryKey: ["products-list-expanded-details"] });
   };
-  const commitProductRowDefaultWarehouseQty = (row: { product_id: string; id: string; stock: number }, draftStock: string) => {
+  const commitProductRowDefaultWarehouseQty = async (
+    row: { product_id: string; id: string; stock: number },
+    draftStock: string,
+  ) => {
     if (row.id === row.product_id) {
       toast.message("Expand the product to adjust stock on each variant.");
       setEditingProductStock(null);
@@ -400,13 +436,17 @@ export default function ProductsPage() {
     const target = isNaN(q) ? 0 : Math.max(0, q);
     const current = inventoryByVariantDefaultWarehouse.get(row.id) ?? row.stock;
     const delta = target - current;
-    if (delta !== 0) {
-      adjustInventory.mutate({
-        warehouseId: defaultWarehouse.id,
-        variantId: row.id,
-        adjustmentType: delta > 0 ? "increase" : "decrease",
-        quantity: Math.abs(delta),
-      });
+    try {
+      if (delta !== 0) {
+        await adjustInventory.mutateAsync({
+          warehouseId: defaultWarehouse.id,
+          variantId: row.id,
+          adjustmentType: delta > 0 ? "increase" : "decrease",
+          quantity: Math.abs(delta),
+        });
+      }
+    } catch {
+      toast.error("Could not adjust inventory");
     }
     setEditingProductStock(null);
     setEditingRows((prev) => {
@@ -739,7 +779,7 @@ export default function ProductsPage() {
                                         }
                                         onKeyDown={(e) => {
                                           if (e.key === "Enter") {
-                                            commitProductRowDefaultWarehouseQty(row, rowEditor(row).stock);
+                                            void commitProductRowDefaultWarehouseQty(row, rowEditor(row).stock);
                                           }
                                         }}
                                         autoFocus
@@ -747,7 +787,7 @@ export default function ProductsPage() {
                                       <button
                                         type="button"
                                         className="rounded p-1 text-emerald-600 hover:bg-emerald-50"
-                                        onClick={() => commitProductRowDefaultWarehouseQty(row, rowEditor(row).stock)}
+                                        onClick={() => void commitProductRowDefaultWarehouseQty(row, rowEditor(row).stock)}
                                       >
                                         <Check className="size-4" />
                                       </button>
@@ -861,14 +901,14 @@ export default function ProductsPage() {
                                   }
                                   onKeyDown={(e) => {
                                     if (e.key === "Enter") {
-                                      saveProductPrice(row, "price", rowEditor(row).price);
+                                      void saveProductPrice(row, "price", rowEditor(row).price);
                                       setEditingPrice(null);
                                     }
                                   }}
                                   autoFocus
                                 />
                                 <button type="button" className="rounded p-1 text-emerald-600 hover:bg-emerald-50" onClick={() => {
-                                  saveProductPrice(row, "price", rowEditor(row).price);
+                                  void saveProductPrice(row, "price", rowEditor(row).price);
                                   setEditingPrice(null);
                                 }}>
                                   <Check className="size-4" />
@@ -897,14 +937,14 @@ export default function ProductsPage() {
                                   }
                                   onKeyDown={(e) => {
                                     if (e.key === "Enter") {
-                                      saveProductPrice(row, "sale_price", rowEditor(row).sale_price || "");
+                                      void saveProductPrice(row, "sale_price", rowEditor(row).sale_price || "");
                                       setEditingSalePrice(null);
                                     }
                                   }}
                                   autoFocus
                                 />
                                 <button type="button" className="rounded p-1 text-emerald-600 hover:bg-emerald-50" onClick={() => {
-                                  saveProductPrice(row, "sale_price", rowEditor(row).sale_price || "");
+                                  void saveProductPrice(row, "sale_price", rowEditor(row).sale_price || "");
                                   setEditingSalePrice(null);
                                 }}>
                                   <Check className="size-4" />
@@ -1096,7 +1136,7 @@ export default function ProductsPage() {
                                         onKeyDown={(e) => {
                                           if (e.key === "Enter") {
                                             const latest = getVariantById(row.product_id, v.id) || v;
-                                            commitVariantDefaultWarehouseQty(
+                                            void commitVariantDefaultWarehouseQty(
                                               row.product_id,
                                               v.id,
                                               latest.quantity ?? "",
@@ -1110,7 +1150,7 @@ export default function ProductsPage() {
                                         className="rounded p-1 text-emerald-600 hover:bg-emerald-50"
                                         onClick={() => {
                                           const latest = getVariantById(row.product_id, v.id) || v;
-                                          commitVariantDefaultWarehouseQty(
+                                          void commitVariantDefaultWarehouseQty(
                                             row.product_id,
                                             v.id,
                                             latest.quantity ?? "",
