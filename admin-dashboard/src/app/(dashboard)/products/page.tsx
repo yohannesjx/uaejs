@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Fragment, useCallback, useMemo, useState } from "react";
 import Link from "next/link";
-import { Check, ChevronDown, ChevronRight, Copy, Package, Trash2 } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, Copy, Package, Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -454,38 +454,55 @@ export default function ProductsPage() {
               </Button>
             </div>
 
-            <div className="overflow-x-auto w-full rounded-xl border border-[var(--border)]">
-              <table className="min-w-[1180px] w-full text-sm">
-                <thead className="border-b border-[var(--border)] bg-transparent">
-                  <tr>
-                    <th className="w-10 px-2 py-3 text-center">
-                      <input
-                        type="checkbox"
-                        checked={allSelected}
-                        onChange={(e) => {
-                          if (e.target.checked) {
-                            const next: Record<string, boolean> = {};
-                            products.forEach((p) => {
-                              next[p.product_id] = true;
-                            });
-                            setSelectedProducts(next);
-                          } else {
-                            setSelectedProducts({});
-                          }
-                        }}
-                      />
-                    </th>
-                    <th className="w-10 px-4 py-3"></th>
-                    <th className="px-4 py-3 text-left font-medium text-[var(--muted-foreground)] whitespace-nowrap">Product</th>
-                    <th className="px-4 py-3 text-left font-medium text-[var(--muted-foreground)] whitespace-nowrap">SKU</th>
-                    <th className="px-4 py-3 text-left font-medium text-[var(--muted-foreground)] whitespace-nowrap">Inventory</th>
-                    <th className="px-4 py-3 text-left font-medium text-[var(--muted-foreground)] whitespace-nowrap">Cost</th>
-                    <th className="px-4 py-3 text-left font-medium text-[var(--muted-foreground)] whitespace-nowrap">Price</th>
-                    <th className="px-4 py-3 text-left font-medium text-[var(--muted-foreground)] whitespace-nowrap">Sale price</th>
-                    <th className="px-4 py-3 text-center font-medium text-[var(--muted-foreground)] whitespace-nowrap">Status</th>
-                    <th className="px-4 py-3 text-right font-medium text-[var(--muted-foreground)] whitespace-nowrap">Actions</th>
-                  </tr>
-                </thead>
+            <div className="w-full overflow-hidden rounded-xl border border-[var(--border)]">
+              <div className="overflow-x-auto lg:overflow-x-visible">
+                <table className="w-full min-w-[720px] border-collapse text-xs sm:text-sm lg:min-w-0 lg:table-fixed">
+                  <thead className="border-b border-[var(--border)] bg-transparent">
+                    <tr>
+                      <th className="px-1 py-2 text-center sm:px-2 sm:py-2.5 lg:w-[3%]">
+                        <input
+                          type="checkbox"
+                          checked={allSelected}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              const next: Record<string, boolean> = {};
+                              products.forEach((p) => {
+                                next[p.product_id] = true;
+                              });
+                              setSelectedProducts(next);
+                            } else {
+                              setSelectedProducts({});
+                            }
+                          }}
+                        />
+                      </th>
+                      <th className="px-0 py-2 sm:py-2.5 lg:w-[3%]" aria-label="Expand" />
+                      <th className="min-w-0 px-2 py-2 text-left text-[10px] font-semibold uppercase tracking-wide text-[var(--muted-foreground)] sm:px-2 sm:py-2.5 sm:text-xs sm:normal-case sm:tracking-normal lg:w-[37%]">
+                        Product
+                      </th>
+                      <th className="px-2 py-2 text-left text-[10px] font-semibold uppercase tracking-wide text-[var(--muted-foreground)] sm:py-2.5 sm:text-xs sm:normal-case sm:tracking-normal lg:w-[11%]">
+                        SKU
+                      </th>
+                      <th className="px-2 py-2 text-left text-[10px] font-semibold uppercase tracking-wide text-[var(--muted-foreground)] sm:py-2.5 sm:text-xs sm:normal-case sm:tracking-normal lg:w-[7%]">
+                        Stock
+                      </th>
+                      <th className="px-2 py-2 text-left text-[10px] font-semibold uppercase tracking-wide text-[var(--muted-foreground)] sm:py-2.5 sm:text-xs sm:normal-case sm:tracking-normal lg:w-[8%]">
+                        Cost
+                      </th>
+                      <th className="px-2 py-2 text-left text-[10px] font-semibold uppercase tracking-wide text-[var(--muted-foreground)] sm:py-2.5 sm:text-xs sm:normal-case sm:tracking-normal lg:w-[8%]">
+                        Price
+                      </th>
+                      <th className="px-2 py-2 text-left text-[10px] font-semibold uppercase tracking-wide text-[var(--muted-foreground)] sm:py-2.5 sm:text-xs sm:normal-case sm:tracking-normal lg:w-[8%]">
+                        Sale
+                      </th>
+                      <th className="px-2 py-2 text-center text-[10px] font-semibold uppercase tracking-wide text-[var(--muted-foreground)] sm:py-2.5 sm:text-xs sm:normal-case sm:tracking-normal lg:w-[9%]">
+                        Status
+                      </th>
+                      <th className="px-2 py-2 text-right text-[10px] font-semibold uppercase tracking-wide text-[var(--muted-foreground)] sm:py-2.5 sm:text-xs sm:normal-case sm:tracking-normal lg:w-[6%]">
+                        Actions
+                      </th>
+                    </tr>
+                  </thead>
                 <tbody className="divide-y divide-[var(--border)] bg-[var(--panel)]">
                   {products.map((row) => {
                     const isOpen = !!expanded[row.product_id];
@@ -494,7 +511,7 @@ export default function ProductsPage() {
                       <Fragment key={row.id}>
                         {/* Main Product Row */}
                         <tr className="group transition-colors hover:bg-[var(--muted)]/20">
-                          <td className="px-2 py-4 text-center">
+                          <td className="px-1 py-2 text-center sm:px-2 sm:py-2.5">
                             <input
                               type="checkbox"
                               checked={!!selectedProducts[row.product_id]}
@@ -503,7 +520,7 @@ export default function ProductsPage() {
                               }
                             />
                           </td>
-                          <td className="px-2 py-4">
+                          <td className="px-0 py-2 sm:py-2.5">
                             <button
                               type="button"
                               className="rounded p-1 text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-black"
@@ -514,11 +531,11 @@ export default function ProductsPage() {
                               {isOpen ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
                             </button>
                           </td>
-                          <td className="px-4 py-4 whitespace-nowrap">
-                            <div className="flex items-center gap-3">
+                          <td className="min-w-0 px-2 py-2 sm:py-2.5">
+                            <div className="flex min-w-0 items-center gap-1.5 sm:gap-2">
                               <button
                                 type="button"
-                                className="group/img relative"
+                                className="group/img relative shrink-0"
                                 onClick={() => {
                                   setMediaTarget({ kind: "product", productId: row.product_id, sku: row.sku });
                                   setMediaModalOpen(true);
@@ -530,29 +547,41 @@ export default function ProductsPage() {
                                     <img
                                       src={listThumbUrl(row.thumbnail, 160)}
                                       alt={row.name}
-                                      className="size-10 rounded-md border border-[var(--border)] object-cover bg-[var(--muted)]"
+                                      className="size-8 rounded-md border border-[var(--border)] object-cover bg-[var(--muted)] sm:size-9 lg:size-8"
                                       onMouseEnter={() => setHoverThumb(publicUploadUrl(row.thumbnail) || null)}
                                       onMouseLeave={() => setHoverThumb(null)}
                                     />
                                   </>
                                 ) : (
-                                  <div className="flex size-10 shrink-0 items-center justify-center rounded-md border border-dashed border-[var(--border)] bg-[var(--muted)] text-[var(--muted-foreground)]">
+                                  <div className="flex size-8 shrink-0 items-center justify-center rounded-md border border-dashed border-[var(--border)] bg-[var(--muted)] text-[var(--muted-foreground)] sm:size-9 lg:size-8">
                                     <Package className="size-4" />
                                   </div>
                                 )}
-                                <span className="absolute -bottom-5 left-1/2 -translate-x-1/2 text-[10px] text-[var(--muted-foreground)] opacity-0 transition-opacity group-hover/img:opacity-100">
+                                <span className="pointer-events-none absolute -bottom-4 left-1/2 hidden -translate-x-1/2 text-[10px] text-[var(--muted-foreground)] opacity-0 transition-opacity group-hover/img:opacity-100 sm:block">
                                   Upload
                                 </span>
                               </button>
-                              <Link href={`/products/${row.product_id}/edit`} className="font-semibold text-[var(--foreground)] hover:underline">
+                              <Link
+                                href={`/products/${row.product_id}/edit`}
+                                className="min-w-0 flex-1 truncate font-semibold text-[var(--foreground)] hover:underline"
+                                title={row.name}
+                              >
                                 {row.name}
+                              </Link>
+                              <Link
+                                href={`/products/${row.product_id}/edit`}
+                                className="shrink-0 rounded-md p-1.5 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
+                                title="Edit product"
+                                aria-label="Edit product"
+                              >
+                                <Pencil className="size-3.5 sm:size-4" />
                               </Link>
                             </div>
                           </td>
-                          <td className="px-4 py-4">
+                          <td className="px-2 py-2 sm:py-2.5">
                             <span className="font-mono text-xs text-[var(--muted-foreground)]">{row.sku || "—"}</span>
                           </td>
-                          <td className="px-4 py-4">
+                          <td className="px-2 py-2 sm:py-2.5">
                             {(() => {
                               const rows = inventoryByProduct.get(row.product_id) ?? [];
                               const totalAvailable = rows.reduce((acc, curr) => acc + curr.available_quantity, 0);
@@ -580,11 +609,11 @@ export default function ProductsPage() {
                               );
                             })()}
                           </td>
-                          <td className="px-4 py-4">
+                          <td className="px-2 py-2 sm:py-2.5">
                             {editingCost === row.product_id ? (
                               <div className="flex items-center gap-2">
                                 <Input
-                                  className="h-8 w-24"
+                                  className="h-7 w-full min-w-0 max-w-[5rem]"
                                   value={rowEditor(row).cost}
                                   onChange={(e) =>
                                     setEditingRows((prev) => ({
@@ -616,11 +645,11 @@ export default function ProductsPage() {
                               </button>
                             )}
                           </td>
-                          <td className="px-4 py-4">
+                          <td className="px-2 py-2 sm:py-2.5">
                             {editingPrice === row.product_id ? (
                               <div className="flex items-center gap-2">
                                 <Input
-                                  className="h-8 w-24"
+                                  className="h-7 w-full min-w-0 max-w-[5rem]"
                                   value={rowEditor(row).price}
                                   onChange={(e) =>
                                     setEditingRows((prev) => ({
@@ -652,11 +681,11 @@ export default function ProductsPage() {
                               </button>
                             )}
                           </td>
-                          <td className="px-4 py-4 whitespace-nowrap">
+                          <td className="px-2 py-2 sm:py-2.5 whitespace-nowrap">
                             {editingSalePrice === row.product_id ? (
                               <div className="flex items-center gap-2">
                                 <Input
-                                  className="h-8 w-24"
+                                  className="h-7 w-full min-w-0 max-w-[5rem]"
                                   value={rowEditor(row).sale_price || ""}
                                   onChange={(e) =>
                                     setEditingRows((prev) => ({
@@ -688,7 +717,7 @@ export default function ProductsPage() {
                               </button>
                             )}
                           </td>
-                          <td className="px-4 py-4 text-center">
+                          <td className="px-2 py-2 sm:py-2.5 text-center">
                             <button
                               type="button"
                               aria-label={`Toggle ${row.name} status`}
@@ -702,7 +731,7 @@ export default function ProductsPage() {
                               />
                             </button>
                           </td>
-                          <td className="px-4 py-4 text-right whitespace-nowrap">
+                          <td className="px-2 py-2 sm:py-2.5 text-right whitespace-nowrap">
                             <button className="rounded p-1 text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-black" onClick={() => duplicateProduct.mutate(row.product_id)}>
                               <Copy className="size-4" />
                             </button>
@@ -715,8 +744,8 @@ export default function ProductsPage() {
                             <tr key={v.id} className="bg-[var(--muted)]/20 transition-colors hover:bg-[var(--muted)]/35 border-t border-[var(--border)]/50">
                               <td></td>
                               <td></td>
-                              <td className="px-4 py-4 whitespace-nowrap">
-                                <div className="flex items-center gap-3">
+                              <td className="min-w-0 px-2 py-2 sm:py-2.5">
+                                <div className="flex min-w-0 flex-wrap items-center gap-1 sm:gap-1.5">
                                   {v.image_url ? (
                                     <div className="group/vimg relative flex items-center justify-center">
                                       <button
@@ -750,7 +779,7 @@ export default function ProductsPage() {
                                   )}
                                   {variantCellEdit?.variantId === v.id && variantCellEdit.field === "sku" ? (
                                     <Input
-                                      className="h-8 w-48 font-mono text-xs"
+                                      className="h-7 w-full min-w-0 max-w-full font-mono text-xs"
                                       value={v.sku || ""}
                                       onChange={(e) =>
                                         setVariantEdits((prev) => {
@@ -779,7 +808,7 @@ export default function ProductsPage() {
                                   )}
                                   {variantCellEdit?.variantId === v.id && variantCellEdit.field === "size" ? (
                                     <Input
-                                      className="h-8 w-24"
+                                      className="h-7 w-full min-w-0 max-w-[5rem]"
                                       value={v.size || ""}
                                       onChange={(e) =>
                                         setVariantEdits((prev) => {
@@ -808,7 +837,7 @@ export default function ProductsPage() {
                                   )}
                                   {variantCellEdit?.variantId === v.id && variantCellEdit.field === "color" ? (
                                     <Input
-                                      className="h-8 w-28"
+                                      className="h-7 w-full min-w-0 max-w-[5.5rem]"
                                       value={v.color || ""}
                                       onChange={(e) =>
                                         setVariantEdits((prev) => {
@@ -845,18 +874,18 @@ export default function ProductsPage() {
                                   </button>
                                 </div>
                               </td>
-                              <td className="px-4 py-4">
+                              <td className="px-2 py-2 sm:py-2.5">
                                 <span className="font-mono text-xs text-[var(--muted-foreground)]">{v.sku || "—"}</span>
                               </td>
-                              <td className="px-4 py-4">
+                              <td className="px-2 py-2 sm:py-2.5">
                                 <span className="font-medium tabular-nums text-[var(--foreground)]">
                                   {inventoryByVariantDefaultWarehouse.get(v.id) ?? Number(v.quantity || 0)}
                                 </span>
                               </td>
-                              <td className="px-4 py-4">
+                              <td className="px-2 py-2 sm:py-2.5">
                                 {variantCellEdit?.variantId === v.id && variantCellEdit.field === "cost" ? (
                                   <Input
-                                    className="h-8 w-24"
+                                    className="h-7 w-full min-w-0 max-w-[5rem]"
                                     value={v.cost ?? ""}
                                     onChange={(e) =>
                                       setVariantEdits((prev) => {
@@ -884,10 +913,10 @@ export default function ProductsPage() {
                                   </button>
                                 )}
                               </td>
-                              <td className="px-4 py-4">
+                              <td className="px-2 py-2 sm:py-2.5">
                                 {variantCellEdit?.variantId === v.id && variantCellEdit.field === "price" ? (
                                   <Input
-                                    className="h-8 w-24"
+                                    className="h-7 w-full min-w-0 max-w-[5rem]"
                                     value={v.price || row.price}
                                     onChange={(e) =>
                                       setVariantEdits((prev) => {
@@ -915,10 +944,10 @@ export default function ProductsPage() {
                                   </button>
                                 )}
                               </td>
-                              <td className="px-4 py-4">
+                              <td className="px-2 py-2 sm:py-2.5">
                                 {variantCellEdit?.variantId === v.id && variantCellEdit.field === "sale_price" ? (
                                   <Input
-                                    className="h-8 w-24"
+                                    className="h-7 w-full min-w-0 max-w-[5rem]"
                                     value={v.sale_price || ""}
                                     onChange={(e) =>
                                       setVariantEdits((prev) => {
@@ -945,11 +974,11 @@ export default function ProductsPage() {
                                   </button>
                                 )}
                               </td>
-                              <td className="px-4 py-4 text-center">
+                              <td className="px-2 py-2 sm:py-2.5 text-center">
                                 {variantCellEdit?.variantId === v.id && variantCellEdit.field === "quantity" ? (
                                   <div className="flex flex-col items-center justify-center gap-1">
                                     <Input
-                                      className="h-8 w-20 text-center"
+                                      className="h-7 w-full min-w-0 max-w-[3.5rem] text-center"
                                       type="number"
                                       value={v.quantity ?? ""}
                                       onChange={(e) =>
@@ -980,7 +1009,9 @@ export default function ProductsPage() {
                                       }}
                                       autoFocus
                                     />
-                                    <span className="text-[10px] text-[var(--muted-foreground)]">Updating stock in Default Warehouse</span>
+                                    <span className="text-[9px] leading-tight text-[var(--muted-foreground)]" title="Adjusts default warehouse stock">
+                                      Def. WH
+                                    </span>
                                   </div>
                                 ) : (
                                   <button
@@ -994,7 +1025,7 @@ export default function ProductsPage() {
                                   </button>
                                 )}
                               </td>
-                              <td className="px-4 py-4 text-right">
+                              <td className="px-2 py-2 sm:py-2.5 text-right">
                                 <button
                                   className="rounded p-1 text-[var(--muted-foreground)] hover:bg-red-50 hover:text-red-600"
                                   onClick={() => {
@@ -1008,7 +1039,7 @@ export default function ProductsPage() {
                             </tr>
                           )) : (
                             <tr className="bg-[var(--muted)]/20 border-t border-[var(--border)]/50">
-                              <td colSpan={10} className="px-4 py-4 text-sm text-[var(--muted-foreground)]">
+                              <td colSpan={10} className="px-2 py-2 sm:py-2.5 text-sm text-[var(--muted-foreground)]">
                                 No variants for this product yet.
                               </td>
                             </tr>
@@ -1019,6 +1050,7 @@ export default function ProductsPage() {
                   })}
                 </tbody>
               </table>
+              </div>
             </div>
 
             <div className="flex items-center justify-between">
