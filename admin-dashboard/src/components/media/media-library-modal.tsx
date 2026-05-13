@@ -3,9 +3,10 @@
 import { useCallback, useEffect, useState, useRef } from "react";
 import { useDropzone } from "react-dropzone";
 import * as Dialog from "@radix-ui/react-dialog";
-import { Search, Image as ImageIcon, CheckCircle2, Loader2, UploadCloud, FileVideo, Tags } from "lucide-react";
+import { Search, Image as ImageIcon, CheckCircle2, Loader2, UploadCloud, FileVideo, Tags, Link2, ClipboardPaste } from "lucide-react";
 import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useVirtualizer } from "@tanstack/react-virtual";
+import { toast } from "sonner";
 import { Input, Button } from "@/components/ui/primitives";
 import { api, publicUploadUrl } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
@@ -46,6 +47,7 @@ export function MediaLibraryModal({
     const queryClient = useQueryClient();
     const [search, setSearch] = useState("");
     const [type, setType] = useState<string>("");
+    const [importUrl, setImportUrl] = useState("");
     const scrollRef = useRef<HTMLDivElement>(null);
     const wasOpenRef = useRef(false);
 
@@ -124,31 +126,123 @@ export function MediaLibraryModal({
         }
     });
 
+    const { mutateAsync: importFromUrl, isPending: isImportingUrl } = useMutation({
+        mutationFn: async (url: string) => api.importMediaFromUrl(url.trim()),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ["media"] });
+        },
+    });
+
+    const applyUploadedAsset = useCallback(
+        (res: MediaAsset, fileCountHint = 1) => {
+            if (mode === "single" && fileCountHint === 1) {
+                setSelected([res]);
+            } else {
+                setSelected((prev) => {
+                    if (prev.some((a) => a.id === res.id)) return prev;
+                    return [...prev, res];
+                });
+            }
+        },
+        [mode],
+    );
+
     const onDrop = useCallback(
         async (acceptedFiles: File[]) => {
             for (const file of acceptedFiles) {
                 try {
                     const res = await uploadItem(file);
-                    if (mode === "single" && acceptedFiles.length === 1) {
-                        setSelected([res]);
-                    } else {
-                        setSelected(prev => {
-                            if (prev.some(a => a.id === res.id)) return prev;
-                            return [...prev, res];
-                        });
-                    }
+                    applyUploadedAsset(res, acceptedFiles.length);
                 } catch (err) {
                     console.error("Upload failed", err);
+                    toast.error("Upload failed");
                 }
             }
         },
-        [uploadItem, mode]
+        [uploadItem, applyUploadedAsset],
     );
+
+    const handlePaste = useCallback(
+        (e: React.ClipboardEvent) => {
+            const t = e.target as HTMLElement | null;
+            if (t?.closest("[data-skip-media-paste]")) {
+                return;
+            }
+            const files = e.clipboardData?.files;
+            if (files && files.length > 0) {
+                const imgs = Array.from(files).filter((f) => f.type.startsWith("image/") || f.type === "" || f.name.match(/\.(png|jpe?g|gif|webp)$/i));
+                if (imgs.length > 0) {
+                    e.preventDefault();
+                    void onDrop(imgs);
+                    return;
+                }
+            }
+            const items = e.clipboardData?.items;
+            if (items) {
+                for (let i = 0; i < items.length; i++) {
+                    const it = items[i];
+                    if (it.kind === "file" && it.type.startsWith("image/")) {
+                        const f = it.getAsFile();
+                        if (f) {
+                            e.preventDefault();
+                            void onDrop([f]);
+                            return;
+                        }
+                    }
+                }
+            }
+        },
+        [onDrop],
+    );
+
+    const pasteFromClipboard = useCallback(async () => {
+        try {
+            if (!navigator.clipboard?.read) {
+                toast.message("Use Ctrl+V (⌘V) while this window is focused, or drag an image in.");
+                return;
+            }
+            const items = await navigator.clipboard.read();
+            for (const item of items) {
+                for (const ty of item.types) {
+                    if (ty.startsWith("image/")) {
+                        const blob = await item.getType(ty);
+                        const ext = ty.split("/")[1] || "png";
+                        const file = new File([blob], `paste-${Date.now()}.${ext}`, { type: ty });
+                        const res = await uploadItem(file);
+                        applyUploadedAsset(res, 1);
+                        toast.success("Image pasted from clipboard");
+                        return;
+                    }
+                }
+            }
+            toast.message("No image in clipboard. Copy an image first, then click Paste again or use Ctrl+V.");
+        } catch {
+            toast.error("Clipboard access denied. Try Ctrl+V (⌘V) after copying an image.");
+        }
+    }, [uploadItem, applyUploadedAsset]);
+
+    const submitImportUrl = useCallback(async () => {
+        const u = importUrl.trim();
+        if (!u) {
+            toast.error("Enter an image URL");
+            return;
+        }
+        try {
+            const res = await importFromUrl(u);
+            applyUploadedAsset(res, 1);
+            setImportUrl("");
+            toast.success("Image imported from link");
+        } catch (err) {
+            console.error(err);
+            toast.error("Could not import that URL");
+        }
+    }, [importUrl, importFromUrl, applyUploadedAsset]);
 
     const { getRootProps, getInputProps, isDragActive, open: openFileDialog } = useDropzone({
         onDrop,
         accept: { "image/*": [], "video/*": [] },
-        noClick: true, // Specific drop zone only
+        noClick: true,
+        disabled: !open,
     });
 
     const toggleSelect = (asset: MediaAsset) => {
@@ -183,6 +277,18 @@ export function MediaLibraryModal({
                     <Dialog.Title className="sr-only">Media Library</Dialog.Title>
                     <Dialog.Description className="sr-only">Manage your media assets</Dialog.Description>
 
+                    <div
+                        {...getRootProps({ onPaste: handlePaste })}
+                        className="relative flex min-h-0 flex-1 flex-col overflow-hidden outline-none"
+                    >
+                        <input {...getInputProps()} />
+                        {isDragActive && (
+                            <div className="pointer-events-none absolute inset-0 z-[25] flex flex-col items-center justify-center bg-[var(--primary)]/15 backdrop-blur-[2px]">
+                                <UploadCloud className="size-16 text-[var(--primary)] animate-bounce" />
+                                <p className="mt-4 font-semibold text-lg text-[var(--primary)]">Drop files to upload</p>
+                            </div>
+                        )}
+
                     {/* Header */}
                     <div className="flex min-h-12 shrink-0 items-center justify-between gap-2 border-b border-[var(--border)] px-3 py-2 pt-[max(0.5rem,env(safe-area-inset-top))] sm:h-16 sm:px-6 sm:py-0 sm:pt-0">
                         <h2 className="truncate text-base font-semibold sm:text-lg">Media</h2>
@@ -194,19 +300,10 @@ export function MediaLibraryModal({
                         </div>
                     </div>
 
-                    <div className="flex min-h-0 flex-1 flex-col overflow-hidden md:flex-row" {...getRootProps()}>
-                        <input {...getInputProps()} />
+                    <div className="flex min-h-0 flex-1 flex-col overflow-hidden md:flex-row">
 
                         {/* Main Content Area */}
                         <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden md:min-w-0">
-
-                            {/* Drag overlay */}
-                            {isDragActive && (
-                                <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-[var(--primary)]/10 backdrop-blur-[2px]">
-                                    <UploadCloud className="size-16 text-[var(--primary)] animate-bounce" />
-                                    <p className="mt-4 font-semibold text-lg text-[var(--primary)]">Drop files to upload</p>
-                                </div>
-                            )}
 
                             {/* Toolbar: upload first in column layout; search | filter | upload on md+ */}
                             <div className="flex shrink-0 flex-col gap-2 border-b border-[var(--border)] bg-[var(--muted)]/30 p-3 md:flex-row md:items-center md:gap-4 md:p-4">
@@ -242,6 +339,55 @@ export function MediaLibraryModal({
                                 </select>
                             </div>
 
+                            <div
+                                className="flex shrink-0 flex-col gap-2 border-b border-[var(--border)] bg-[var(--muted)]/20 px-3 py-2 md:flex-row md:flex-wrap md:items-center md:gap-2 md:px-4"
+                                data-skip-media-paste
+                            >
+                                <div className="flex items-center gap-2 text-[var(--muted-foreground)]">
+                                    <Link2 className="size-4 shrink-0" aria-hidden />
+                                    <span className="text-xs font-medium uppercase tracking-wide">Import from URL</span>
+                                </div>
+                                <Input
+                                    type="url"
+                                    placeholder="https://example.com/image.jpg"
+                                    className="min-w-0 flex-1 bg-white dark:bg-black md:max-w-md"
+                                    value={importUrl}
+                                    onChange={(e) => setImportUrl(e.target.value)}
+                                    onKeyDown={(e) => {
+                                        if (e.key === "Enter") {
+                                            e.preventDefault();
+                                            void submitImportUrl();
+                                        }
+                                    }}
+                                />
+                                <div className="flex flex-wrap gap-2">
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => void submitImportUrl()}
+                                        disabled={isImportingUrl || isUploading}
+                                    >
+                                        {isImportingUrl ? <Loader2 className="size-4 animate-spin" /> : null}
+                                        Save from link
+                                    </Button>
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        className="gap-1.5"
+                                        onClick={() => void pasteFromClipboard()}
+                                        disabled={isUploading || isImportingUrl}
+                                    >
+                                        <ClipboardPaste className="size-4" />
+                                        Paste image
+                                    </Button>
+                                </div>
+                                <p className="w-full text-[11px] text-[var(--muted-foreground)] md:order-last">
+                                    You can also drag &amp; drop images or videos anywhere in this window, or press Ctrl+V (⌘V) after copying an image.
+                                </p>
+                            </div>
+
                             {/* Grid Area */}
                             <div
                                 ref={scrollRef}
@@ -263,7 +409,9 @@ export function MediaLibraryModal({
                                     <div className="flex h-full flex-col items-center justify-center text-center">
                                         <ImageIcon className="mb-4 size-16 text-[var(--muted-foreground)]/30" />
                                         <h3 className="text-lg font-medium">No media found</h3>
-                                        <p className="text-sm text-[var(--muted-foreground)] mb-4">Drag & drop files here to upload.</p>
+                                        <p className="text-sm text-[var(--muted-foreground)] mb-4">
+                                            Drag &amp; drop, paste (Ctrl+V), import a URL, or upload to add media.
+                                        </p>
                                         <Button onClick={() => openFileDialog()}>Choose Files</Button>
                                     </div>
                                 ) : (
@@ -375,6 +523,7 @@ export function MediaLibraryModal({
                             </div>
                         ) : null}
 
+                    </div>
                     </div>
                 </Dialog.Content>
             </Dialog.Portal>

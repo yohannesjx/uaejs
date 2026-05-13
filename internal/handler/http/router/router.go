@@ -246,6 +246,7 @@ func New(
 		// Media
 		mh := newMediaHandler(svcs.Media, log)
 		r.With(appMiddleware.RequirePermission("products.read")).Post("/media/upload", mh.UploadMedia)
+		r.With(appMiddleware.RequirePermission("products.read")).Post("/media/import-url", mh.ImportMediaFromURL)
 		r.With(appMiddleware.RequirePermission("products.read")).Get("/media", mh.ListMedia)
 		r.With(appMiddleware.RequirePermission("products.read")).Patch("/media/{id}", mh.PatchMedia)
 		r.With(appMiddleware.RequirePermission("products.read")).Delete("/media/{id}", mh.DeleteMedia)

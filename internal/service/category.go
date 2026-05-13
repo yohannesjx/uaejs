@@ -139,6 +139,37 @@ func (s *CategoryService) SetProductCategoryTx(ctx context.Context, tx pgx.Tx, t
 	return nil
 }
 
+// SetProductCategoriesTx replaces memberships with the given categories (deduped, order preserved).
+func (s *CategoryService) SetProductCategoriesTx(ctx context.Context, tx pgx.Tx, tenantID, productID uuid.UUID, categoryIDs []uuid.UUID) error {
+	if err := s.repo.DeleteMembershipsForProduct(ctx, tx, productID); err != nil {
+		return fmt.Errorf("SetProductCategoriesTx delete memberships: %w", err)
+	}
+	seen := make(map[uuid.UUID]struct{}, len(categoryIDs))
+	for _, cid := range categoryIDs {
+		if cid == uuid.Nil {
+			continue
+		}
+		if _, dup := seen[cid]; dup {
+			continue
+		}
+		seen[cid] = struct{}{}
+		var cTenant uuid.UUID
+		if err := tx.QueryRow(ctx, `SELECT tenant_id FROM product_categories WHERE id = $1`, cid).Scan(&cTenant); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return fmt.Errorf("category %s not found", cid)
+			}
+			return err
+		}
+		if cTenant != tenantID {
+			return fmt.Errorf("category tenant mismatch")
+		}
+		if err := s.repo.LinkProducts(ctx, tx, cid, []uuid.UUID{productID}); err != nil {
+			return fmt.Errorf("SetProductCategoriesTx link %s: %w", cid, err)
+		}
+	}
+	return nil
+}
+
 // FirstCategoryIDForProduct returns one assigned category id for a product, if any.
 func (s *CategoryService) FirstCategoryIDForProduct(ctx context.Context, productID uuid.UUID) (*uuid.UUID, error) {
 	return s.repo.FirstCategoryIDForProduct(ctx, productID)

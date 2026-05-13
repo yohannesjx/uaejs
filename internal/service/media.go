@@ -1,10 +1,15 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
+	"net/http"
+	"net/url"
+	"path"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/dubai-retail/os/internal/domain"
@@ -70,6 +75,81 @@ func (s *MediaService) UploadMedia(ctx context.Context, in UploadMediaInput) (*d
 	}
 
 	return &asset, nil
+}
+
+const maxImportMediaBytes = 52 << 20 // slightly above multipart limit
+
+var importHTTPClient = &http.Client{Timeout: 45 * time.Second}
+
+// ImportMediaFromURL downloads an image over HTTP(S) and stores it like a normal upload.
+func (s *MediaService) ImportMediaFromURL(ctx context.Context, tenantID uuid.UUID, rawURL string) (*domain.MediaAsset, error) {
+	rawURL = strings.TrimSpace(rawURL)
+	u, err := url.Parse(rawURL)
+	if err != nil || u.Scheme != "http" && u.Scheme != "https" || u.Host == "" {
+		return nil, fmt.Errorf("only http(s) URLs are allowed")
+	}
+	host := strings.ToLower(u.Hostname())
+	if host == "localhost" || host == "metadata.google.internal" || strings.HasPrefix(host, "127.") {
+		return nil, fmt.Errorf("url host is not allowed")
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("User-Agent", "DubaiRetailOS-MediaImport/1.0")
+
+	resp, err := importHTTPClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("fetch url: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("remote returned status %d", resp.StatusCode)
+	}
+
+	mt := strings.TrimSpace(strings.Split(resp.Header.Get("Content-Type"), ";")[0])
+	if mt == "" {
+		mt = "application/octet-stream"
+	}
+	if !strings.HasPrefix(mt, "image/") && mt != "application/octet-stream" {
+		return nil, fmt.Errorf("unsupported content type %q (expected image/*)", mt)
+	}
+
+	filename := path.Base(u.Path)
+	if filename == "" || filename == "/" || filename == "." {
+		filename = "import"
+	}
+	if filepath.Ext(filename) == "" {
+		switch {
+		case strings.Contains(mt, "jpeg"), strings.Contains(mt, "jpg"):
+			filename += ".jpg"
+		case strings.Contains(mt, "png"):
+			filename += ".png"
+		case strings.Contains(mt, "webp"):
+			filename += ".webp"
+		case strings.Contains(mt, "gif"):
+			filename += ".gif"
+		default:
+			filename += ".bin"
+		}
+	}
+
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxImportMediaBytes))
+	if err != nil {
+		return nil, fmt.Errorf("read body: %w", err)
+	}
+	if len(body) == 0 {
+		return nil, fmt.Errorf("empty response body")
+	}
+
+	return s.UploadMedia(ctx, UploadMediaInput{
+		TenantID:  tenantID,
+		Filename:  filename,
+		MimeType:  mt,
+		SizeBytes: int64(len(body)),
+		File:      bytes.NewReader(body),
+	})
 }
 
 func (s *MediaService) ListMedia(ctx context.Context, filter domain.MediaFilter) (domain.MediaPage, error) {

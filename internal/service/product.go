@@ -70,6 +70,7 @@ type VariantInput struct {
 type productCategorySync interface {
 	SetProductCategory(ctx context.Context, tenantID, productID uuid.UUID, categoryID *uuid.UUID) error
 	SetProductCategoryTx(ctx context.Context, tx pgx.Tx, tenantID, productID uuid.UUID, categoryID *uuid.UUID) error
+	SetProductCategoriesTx(ctx context.Context, tx pgx.Tx, tenantID, productID uuid.UUID, categoryIDs []uuid.UUID) error
 	FirstCategoryIDForProduct(ctx context.Context, productID uuid.UUID) (*uuid.UUID, error)
 }
 
@@ -84,6 +85,7 @@ type CreateProductInput struct {
 	Category        *string               `json:"category,omitempty"`
 	SubCategory     *string               `json:"sub_category,omitempty"`
 	CategoryID      *uuid.UUID            `json:"category_id,omitempty"`
+	CategoryIDs     []uuid.UUID           `json:"category_ids,omitempty"`
 	VATType         domain.VATType        `json:"vat_type"`
 	HSCode          *string               `json:"hs_code,omitempty"`
 	CountryOfOrigin string                `json:"country_of_origin"`
@@ -509,9 +511,16 @@ func (s *ProductService) CreateProductWithVariants(
 		variants = append(variants, variant)
 	}
 
-	if s.pcs != nil && input.CategoryID != nil {
-		if err := s.pcs.SetProductCategoryTx(ctx, tx, input.TenantID, product.ID, input.CategoryID); err != nil {
-			return nil, fmt.Errorf("CreateProductWithVariants: set category: %w", err)
+	if s.pcs != nil {
+		switch {
+		case len(input.CategoryIDs) > 0:
+			if err := s.pcs.SetProductCategoriesTx(ctx, tx, input.TenantID, product.ID, input.CategoryIDs); err != nil {
+				return nil, fmt.Errorf("CreateProductWithVariants: set categories: %w", err)
+			}
+		case input.CategoryID != nil:
+			if err := s.pcs.SetProductCategoryTx(ctx, tx, input.TenantID, product.ID, input.CategoryID); err != nil {
+				return nil, fmt.Errorf("CreateProductWithVariants: set category: %w", err)
+			}
 		}
 	}
 
@@ -530,7 +539,10 @@ func (s *ProductService) CreateProductWithVariants(
 	)
 
 	out := &CreateProductResult{Product: product, Variants: variants}
-	if input.CategoryID != nil {
+	if len(input.CategoryIDs) > 0 {
+		cid := input.CategoryIDs[0]
+		out.CategoryID = &cid
+	} else if input.CategoryID != nil {
 		cid := *input.CategoryID
 		out.CategoryID = &cid
 	}

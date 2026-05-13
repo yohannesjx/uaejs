@@ -522,7 +522,7 @@ export const api = {
       return Number.isFinite(n) && n >= 0 ? n : 0;
     };
 
-    const { variants: rawVariants, title, category_id, ...rest } = payload;
+    const { variants: rawVariants, title, category_id, category_ids, ...rest } = payload;
     const variants = (rawVariants ?? []).map((v) => ({
       sku: v.sku,
       barcode: v.barcode,
@@ -546,7 +546,9 @@ export const api = {
       country_of_origin: payload.country_of_origin ?? "AE",
       variants,
     };
-    if (category_id != null && String(category_id).trim() !== "") {
+    if (category_ids != null && category_ids.length > 0) {
+      body.category_ids = category_ids.map((id) => String(id).trim()).filter(Boolean);
+    } else if (category_id != null && String(category_id).trim() !== "") {
       body.category_id = String(category_id).trim();
     }
     return apiFetch<ProductDetail>("/api/v1/products/", {
@@ -750,6 +752,12 @@ export const api = {
       body: formData,
     });
   },
+
+  importMediaFromUrl: (url: string) =>
+    apiFetch<MediaAsset>("/admin/media/import-url", {
+      method: "POST",
+      body: JSON.stringify({ url }),
+    }),
 
   listMedia: (params?: {
     limit?: number;

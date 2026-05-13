@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/dubai-retail/os/internal/domain"
@@ -49,6 +50,38 @@ func (h *mediaHandler) UploadMedia(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		h.log.Error("failed to upload media", zap.Error(err))
 		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(asset)
+}
+
+// ImportMediaFromURL handles POST /admin/media/import-url (JSON { "url": "https://..." }).
+func (h *mediaHandler) ImportMediaFromURL(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	tenantID := appMiddleware.TenantFromContext(r.Context())
+
+	var req struct {
+		URL string `json:"url"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+	if strings.TrimSpace(req.URL) == "" {
+		http.Error(w, "missing url", http.StatusBadRequest)
+		return
+	}
+
+	asset, err := h.svc.ImportMediaFromURL(r.Context(), tenantID, req.URL)
+	if err != nil {
+		h.log.Warn("import media from url failed", zap.Error(err), zap.String("url", req.URL))
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 

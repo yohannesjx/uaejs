@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useForm, useWatch, FormProvider } from "react-hook-form";
 import { toast } from "sonner";
 import { ArrowLeft, ImagePlus, Save, Loader2, CheckCircle2 } from "lucide-react";
@@ -17,9 +17,9 @@ import { SortableMediaGrid } from "@/components/media/sortable-media-grid";
 import { VariantBuilder } from "@/components/products/variant-builder";
 import { SeoSection } from "@/components/products/seo-section";
 import { ProductStatusPanel } from "@/components/products/product-status-panel";
-import { CategorySelector } from "@/components/products/category-selector";
+import { CategoryMultiSelector } from "@/components/products/category-multi-selector";
 import { ApiError, api } from "@/lib/api-client";
-import type { MediaAsset, ProductOption, ProductStatus, ProductVariantDraft } from "@/types/api";
+import type { MediaAsset, ProductCategory, ProductOption, ProductStatus, ProductVariantDraft } from "@/types/api";
 
 function generateSku() {
     const digits = Math.floor(10000000 + Math.random() * 90000000);
@@ -30,7 +30,7 @@ type ProductFormValues = {
     title: string;
     slug: string;
     description: string;
-    categoryId: string | null;
+    categoryIds: string[];
     trackInventory: boolean;
     inventoryWarehouseId: string | null;
     price: string;
@@ -53,7 +53,7 @@ const initialFormValues = {
     title: "",
     slug: "",
     description: "",
-    categoryId: null,
+    categoryIds: [],
     trackInventory: true,
     inventoryWarehouseId: null,
     price: "",
@@ -74,6 +74,7 @@ const initialFormValues = {
 
 export default function NewProductPage() {
     const router = useRouter();
+    const queryClient = useQueryClient();
 
     const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
     const [mediaOpen, setMediaOpen] = useState(false);
@@ -87,7 +88,6 @@ export default function NewProductPage() {
 
     const { register, control, setValue, getValues, reset, formState: { isDirty } } = methods;
     const [mediaDirty, setMediaDirty] = useState(false);
-    const [selectedCategoryName, setSelectedCategoryName] = useState<string>("");
     const { data: warehouses = [] } = useQuery({
         queryKey: ["warehouses"],
         queryFn: () => api.listWarehouses(),
@@ -247,13 +247,24 @@ export default function NewProductPage() {
 
             const effectiveStatus = forcedStatus ?? vals.status ?? "active";
 
+            const catIds = Array.isArray(vals.categoryIds)
+                ? vals.categoryIds.filter((id) => id && String(id).trim() !== "")
+                : [];
+            const cats = queryClient.getQueryData<ProductCategory[]>(["categories"]) ?? [];
+            const categoryLabel = catIds
+                .map((id) => cats.find((c) => c.id === id)?.title)
+                .filter(Boolean)
+                .join(", ");
+
             await api.createProductV2({
                 title: vals.title.trim(),
                 slug: vals.slug?.trim() || vals.title.trim(),
                 description: vals.description || "",
                 status: effectiveStatus,
-                category_id: vals.categoryId || undefined,
-                category: selectedCategoryName || undefined,
+                ...(catIds.length > 0
+                    ? { category_ids: catIds, category_id: catIds[0] }
+                    : {}),
+                category: categoryLabel || undefined,
                 track_inventory: Boolean(vals.trackInventory),
                 warehouse_id: vals.inventoryWarehouseId || undefined,
                 tags: vals.tags || [],
@@ -278,7 +289,7 @@ export default function NewProductPage() {
             }
             setSaveStatus("error");
         }
-    }, [getValues, media, router, selectedCategoryName]);
+    }, [getValues, media, queryClient, router]);
 
     const handleDiscard = useCallback(() => {
         reset({ ...initialFormValues, sku: generateSku() });
@@ -429,13 +440,10 @@ export default function NewProductPage() {
                                     </div>
                                 </div>
                                 <div className="space-y-1.5">
-                                    <Label>Category</Label>
-                                    <CategorySelector
-                                        value={formVals.categoryId}
-                                        onChange={(id, category) => {
-                                            setValue("categoryId", id, { shouldDirty: true });
-                                            setSelectedCategoryName(category?.title || "");
-                                        }}
+                                    <Label>Categories</Label>
+                                    <CategoryMultiSelector
+                                        value={formVals.categoryIds ?? []}
+                                        onChange={(ids) => setValue("categoryIds", ids, { shouldDirty: true })}
                                     />
                                 </div>
                                 <div className="space-y-2 rounded-xl border border-[var(--border)] p-3">

@@ -555,6 +555,8 @@ export interface ProductCreatePayload {
   description?: string;
   status: ProductStatus;
   category_id?: UUID | null;
+  /** When non-empty, product is linked to all listed categories (manual memberships). */
+  category_ids?: UUID[];
   track_inventory?: boolean;
   warehouse_id?: UUID | null;
   tags?: string[];
