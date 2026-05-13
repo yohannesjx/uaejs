@@ -701,11 +701,13 @@ func (s *ProductService) UpsertDefaultVariantForProduct(ctx context.Context, pro
 			IsActive:  true,
 			MediaURLs: normalizeMediaURLs(input.MediaURLs),
 		}
-		costPtr, err := normalizeVariantUnitCost(input.Cost)
-		if err != nil {
-			return nil, fmt.Errorf("UpsertDefaultVariantForProduct invalid cost: %w", err)
+		if input.Cost != nil {
+			costPtr, err := normalizeVariantUnitCost(input.Cost)
+			if err != nil {
+				return nil, fmt.Errorf("UpsertDefaultVariantForProduct invalid cost: %w", err)
+			}
+			v.Cost = costPtr
 		}
-		v.Cost = costPtr
 		if err := s.repo.InsertVariant(ctx, tx, v); err != nil {
 			return nil, fmt.Errorf("UpsertDefaultVariantForProduct insert: %w", err)
 		}
@@ -734,18 +736,24 @@ func (s *ProductService) UpsertDefaultVariantForProduct(ctx context.Context, pro
 	if input.ImageURL != nil {
 		v.ImageURL = input.ImageURL
 	}
-	costPtr, err := normalizeVariantUnitCost(input.Cost)
-	if err != nil {
-		return nil, fmt.Errorf("UpsertDefaultVariantForProduct invalid cost: %w", err)
+	if input.Cost != nil {
+		costPtr, err := normalizeVariantUnitCost(input.Cost)
+		if err != nil {
+			return nil, fmt.Errorf("UpsertDefaultVariantForProduct invalid cost: %w", err)
+		}
+		v.Cost = costPtr
 	}
-	v.Cost = costPtr
-	v.MediaURLs = normalizeMediaURLs(input.MediaURLs)
+	if input.MediaURLs != nil {
+		v.MediaURLs = normalizeMediaURLs(input.MediaURLs)
+	}
 
 	if err := s.repo.UpdateVariant(ctx, tx, v); err != nil {
 		return nil, fmt.Errorf("UpsertDefaultVariantForProduct update: %w", err)
 	}
-	if err := s.repo.ReplaceVariantMedia(ctx, tx, v.ID, v.MediaURLs); err != nil {
-		return nil, fmt.Errorf("UpsertDefaultVariantForProduct update media: %w", err)
+	if input.MediaURLs != nil {
+		if err := s.repo.ReplaceVariantMedia(ctx, tx, v.ID, v.MediaURLs); err != nil {
+			return nil, fmt.Errorf("UpsertDefaultVariantForProduct update media: %w", err)
+		}
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return nil, fmt.Errorf("UpsertDefaultVariantForProduct commit: %w", err)
@@ -890,7 +898,9 @@ func (s *ProductService) UpdateVariant(ctx context.Context, variantID uuid.UUID,
 		if err != nil {
 			return fmt.Errorf("UpdateVariant cost: %w", err)
 		}
-		existing.Cost = costPtr
+		if costPtr != nil {
+			existing.Cost = costPtr
+		}
 	}
 	if input.MediaURLs != nil {
 		existing.MediaURLs = normalizeMediaURLs(input.MediaURLs)
@@ -1141,12 +1151,61 @@ func (s *ProductService) DuplicateProduct(ctx context.Context, productID uuid.UU
 		if err := s.repo.InitInventory(ctx, tx, nv.ID); err != nil {
 			return nil, fmt.Errorf("DuplicateProduct init inventory: %w", err)
 		}
+		if err := copyVariantPricingInventoryAndWarehouseStock(ctx, tx, v.ID, nv.ID); err != nil {
+			return nil, fmt.Errorf("DuplicateProduct copy variant data: %w", err)
+		}
 	}
 
 	if err := tx.Commit(ctx); err != nil {
 		return nil, fmt.Errorf("DuplicateProduct commit: %w", err)
 	}
 	return dup, nil
+}
+
+// copyVariantPricingInventoryAndWarehouseStock copies channel prices, promos,
+// global inventory quantities, and per-warehouse stock from an existing variant to a new one.
+func copyVariantPricingInventoryAndWarehouseStock(ctx context.Context, tx pgx.Tx, srcVariantID, dstVariantID uuid.UUID) error {
+	const copyChannelPrices = `
+		INSERT INTO channel_prices (id, variant_id, channel_id, price, currency, is_active, effective_from, effective_until, created_at, updated_at)
+		SELECT gen_random_uuid(), $1, channel_id, price, currency, is_active, effective_from, effective_until,
+		       NOW() AT TIME ZONE 'UTC', NOW() AT TIME ZONE 'UTC'
+		  FROM channel_prices WHERE variant_id = $2`
+	if _, err := tx.Exec(ctx, copyChannelPrices, dstVariantID, srcVariantID); err != nil {
+		return fmt.Errorf("channel_prices: %w", err)
+	}
+
+	const copyPromos = `
+		INSERT INTO price_promotions (id, variant_id, channel_id, customer_tier, promo_price, currency, effective_from, effective_until, is_active, created_at, updated_at)
+		SELECT gen_random_uuid(), $1, channel_id, customer_tier, promo_price, currency, effective_from, effective_until, is_active,
+		       NOW() AT TIME ZONE 'UTC', NOW() AT TIME ZONE 'UTC'
+		  FROM price_promotions WHERE variant_id = $2`
+	if _, err := tx.Exec(ctx, copyPromos, dstVariantID, srcVariantID); err != nil {
+		return fmt.Errorf("price_promotions: %w", err)
+	}
+
+	const syncInventory = `
+		UPDATE inventory AS i_new
+		   SET quantity_on_hand = i_old.quantity_on_hand,
+		       quantity_reserved = i_old.quantity_reserved,
+		       reorder_point = i_old.reorder_point,
+		       reorder_qty = i_old.reorder_qty,
+		       updated_at = NOW() AT TIME ZONE 'UTC'
+		  FROM inventory i_old
+		 WHERE i_new.variant_id = $1 AND i_old.variant_id = $2`
+	if _, err := tx.Exec(ctx, syncInventory, dstVariantID, srcVariantID); err != nil {
+		return fmt.Errorf("inventory: %w", err)
+	}
+
+	const copyWarehouseStock = `
+		INSERT INTO warehouse_stock (id, warehouse_id, variant_id, qty_on_hand, qty_reserved, reorder_point, reorder_qty)
+		SELECT gen_random_uuid(), warehouse_id, $1::uuid, qty_on_hand, qty_reserved, reorder_point, reorder_qty
+		  FROM warehouse_stock WHERE variant_id = $2`
+	if _, err := tx.Exec(ctx, copyWarehouseStock, dstVariantID, srcVariantID); err != nil {
+		if !isUndefinedTable(err) {
+			return fmt.Errorf("warehouse_stock: %w", err)
+		}
+	}
+	return nil
 }
 
 // =============================================================================

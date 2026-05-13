@@ -213,6 +213,19 @@ func (s *WarehouseService) AdjustInventory(ctx context.Context, in AdjustInvento
 		}
 	}()
 
+	seed := &domain.WarehouseStock{
+		ID:           uuid.New(),
+		WarehouseID:  in.WarehouseID,
+		VariantID:    in.VariantID,
+		QtyOnHand:    0,
+		QtyReserved:  0,
+		ReorderPoint: 0,
+		ReorderQty:   0,
+	}
+	if err := s.repo.UpsertStockTx(ctx, tx, seed); err != nil {
+		return nil, fmt.Errorf("AdjustInventory: ensure warehouse stock row: %w", err)
+	}
+
 	before, err := s.repo.GetStockForUpdate(ctx, tx, in.WarehouseID, in.VariantID)
 	if err != nil {
 		return nil, fmt.Errorf("AdjustInventory: lock stock: %w", err)

@@ -157,7 +157,7 @@ export default function ProductsPage() {
         sale_price: v.sale_price || undefined,
         quantity: v.quantity === undefined || v.quantity === "" ? undefined : Number(v.quantity),
       };
-      if (v.cost !== undefined) {
+      if (v.cost !== undefined && String(v.cost ?? "").trim() !== "") {
         payload.cost = String(v.cost ?? "").trim();
       }
       return api.patchVariant(v.id, payload);
@@ -255,9 +255,6 @@ export default function ProductsPage() {
               media_urls: [imageUrl],
               price: v.price != null ? String(v.price) : undefined,
               sale_price: v.sale_price != null ? String(v.sale_price) : undefined,
-              ...(v.cost !== undefined && v.cost !== null
-                ? { cost: String(v.cost).trim() }
-                : {}),
               quantity:
                 typeof v.quantity === "number"
                   ? v.quantity
@@ -422,10 +419,31 @@ export default function ProductsPage() {
     row: { product_id: string; id: string; stock: number },
     draftStock: string,
   ) => {
+    let variantId = row.id;
+    let stockFallback = row.stock;
     if (row.id === row.product_id) {
-      toast.message("Expand the product to adjust stock on each variant.");
-      setEditingProductStock(null);
-      return;
+      try {
+        const detail = await api.getProduct(row.product_id);
+        const rawVariants = (detail.variants ?? []) as { id?: string; quantity?: number | string }[];
+        const first = rawVariants.find((x) => x.id);
+        if (!first?.id) {
+          toast.message("Add a variant before adjusting stock from the product row.");
+          setEditingProductStock(null);
+          return;
+        }
+        variantId = String(first.id);
+        const q = first.quantity;
+        stockFallback =
+          typeof q === "number"
+            ? q
+            : q != null && String(q).trim() !== ""
+              ? Number.parseInt(String(q).trim(), 10) || row.stock
+              : row.stock;
+      } catch {
+        toast.error("Could not load variants for this product.");
+        setEditingProductStock(null);
+        return;
+      }
     }
     if (!defaultWarehouse) {
       toast.error("No default warehouse configured.");
@@ -434,13 +452,13 @@ export default function ProductsPage() {
     }
     const q = parseInt(String(draftStock).trim(), 10);
     const target = isNaN(q) ? 0 : Math.max(0, q);
-    const current = inventoryByVariantDefaultWarehouse.get(row.id) ?? row.stock;
+    const current = inventoryByVariantDefaultWarehouse.get(variantId) ?? stockFallback;
     const delta = target - current;
     try {
       if (delta !== 0) {
         await adjustInventory.mutateAsync({
           warehouseId: defaultWarehouse.id,
-          variantId: row.id,
+          variantId,
           adjustmentType: delta > 0 ? "increase" : "decrease",
           quantity: Math.abs(delta),
         });
@@ -758,7 +776,9 @@ export default function ProductsPage() {
                               const defaultQty =
                                 hasPrimaryVariant && defaultWarehouse
                                   ? (inventoryByVariantDefaultWarehouse.get(row.id) ?? row.stock)
-                                  : null;
+                                  : defaultWarehouse
+                                    ? totalAvailable
+                                    : null;
                               if (editingProductStock === row.product_id) {
                                 return (
                                   <div className="flex flex-col gap-0.5">
@@ -793,7 +813,9 @@ export default function ProductsPage() {
                                       </button>
                                     </div>
                                     <span className="text-[9px] leading-tight text-[var(--muted-foreground)]">
-                                      {hasPrimaryVariant ? "Default warehouse · primary variant" : "Add a variant to edit stock here"}
+                                      {hasPrimaryVariant
+                                        ? "Default warehouse · primary variant"
+                                        : "Default warehouse · first variant"}
                                     </span>
                                   </div>
                                 );
@@ -812,11 +834,7 @@ export default function ProductsPage() {
                                     type="button"
                                     className="w-full text-left font-medium tabular-nums text-[var(--foreground)] hover:underline"
                                     onClick={() => {
-                                      if (!hasPrimaryVariant) {
-                                        toast.message("Expand the product to adjust stock on each variant.");
-                                        return;
-                                      }
-                                      const cur = defaultQty ?? row.stock;
+                                      const cur = defaultQty ?? totalAvailable ?? row.stock;
                                       setEditingRows((prev) => ({
                                         ...prev,
                                         [row.product_id]: { ...rowEditor(row), stock: String(cur) },
@@ -828,7 +846,7 @@ export default function ProductsPage() {
                                   </button>
                                   {hoverInventoryProduct === row.product_id && rows.length > 0 && (
                                     <div className="absolute left-0 top-8 z-20 min-w-[200px] max-w-[min(100vw-2rem,280px)] rounded-lg border border-[var(--border)] bg-[var(--panel)] p-2 text-xs shadow-lg">
-                                      {hasPrimaryVariant && defaultQty != null && (
+                                      {defaultWarehouse && defaultQty != null && (
                                         <div className="mb-1.5 border-b border-[var(--border)] pb-1.5 text-[10px] text-[var(--muted-foreground)]">
                                           Click total to edit default warehouse ({defaultQty}) · all locations below
                                         </div>
