@@ -96,6 +96,8 @@ export default function NewProductPage() {
     const [showUnsavedLeaveBanner, setShowUnsavedLeaveBanner] = useState(false);
     const [pendingHref, setPendingHref] = useState<string | null>(null);
     const hasUnsavedChanges = isDirty || mediaDirty;
+    /** Avoid overlapping create requests (double-click, ⌘S + button) which often cause duplicate-SKU 409s. */
+    const saveInFlightRef = useRef(false);
 
     // We use useWatch to subscribe to form variations without re-rendering the whole tree unconditionally
     const formVals = useWatch({ control });
@@ -194,6 +196,9 @@ export default function NewProductPage() {
             toast.error("Product title is required");
             return;
         }
+        if (saveInFlightRef.current) {
+            return;
+        }
 
         const intQty = (primary: unknown, fallback: unknown): number => {
             const raw = primary != null && primary !== "" ? primary : fallback;
@@ -202,6 +207,7 @@ export default function NewProductPage() {
             return Number.isFinite(n) && n >= 0 ? n : 0;
         };
 
+        saveInFlightRef.current = true;
         setSaveStatus("saving");
         try {
             const fallbackMediaUrl = media[0]?.url;
@@ -282,12 +288,22 @@ export default function NewProductPage() {
             // Redirect or invalidate
             router.push(`/products`);
         } catch (err) {
-            if (err instanceof ApiError && typeof err.payload === "string" && err.payload.trim()) {
-                toast.error(err.payload);
+            if (err instanceof ApiError) {
+                const msg = (err.message || "").trim() || "Could not save product.";
+                if (err.status === 409 && /sku/i.test(msg)) {
+                    toast.error(msg, {
+                        description:
+                            "That SKU is already used by another variant. Change the product or variant SKU and try again.",
+                    });
+                } else {
+                    toast.error(msg);
+                }
             } else {
-                toast.error("Failed to save complete product active state.");
+                toast.error(err instanceof Error ? err.message : "Could not save product.");
             }
             setSaveStatus("error");
+        } finally {
+            saveInFlightRef.current = false;
         }
     }, [getValues, media, queryClient, router]);
 
