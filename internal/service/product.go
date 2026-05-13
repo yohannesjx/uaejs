@@ -874,9 +874,17 @@ func (s *ProductService) UpdateVariant(ctx context.Context, variantID uuid.UUID,
 
 	sku := strings.ToUpper(strings.TrimSpace(input.SKU))
 	existing.SKU = &sku
-	existing.Color = input.Color
-	existing.Size = input.Size
-	existing.ImageURL = input.ImageURL
+	// Partial PATCH: only overwrite fields present in the JSON body. Omitting image_url /
+	// media_urls must not clear them (e.g. admin list price-only updates).
+	if input.Color != nil {
+		existing.Color = input.Color
+	}
+	if input.Size != nil {
+		existing.Size = input.Size
+	}
+	if input.ImageURL != nil {
+		existing.ImageURL = input.ImageURL
+	}
 	if input.Cost != nil {
 		costPtr, err := normalizeVariantUnitCost(input.Cost)
 		if err != nil {
@@ -884,12 +892,16 @@ func (s *ProductService) UpdateVariant(ctx context.Context, variantID uuid.UUID,
 		}
 		existing.Cost = costPtr
 	}
-	existing.MediaURLs = normalizeMediaURLs(input.MediaURLs)
+	if input.MediaURLs != nil {
+		existing.MediaURLs = normalizeMediaURLs(input.MediaURLs)
+	}
 	if err := s.repo.UpdateVariant(ctx, tx, existing); err != nil {
 		return fmt.Errorf("UpdateVariant persist: %w", err)
 	}
-	if err := s.repo.ReplaceVariantMedia(ctx, tx, existing.ID, existing.MediaURLs); err != nil {
-		return fmt.Errorf("UpdateVariant media: %w", err)
+	if input.MediaURLs != nil {
+		if err := s.repo.ReplaceVariantMedia(ctx, tx, existing.ID, existing.MediaURLs); err != nil {
+			return fmt.Errorf("UpdateVariant media: %w", err)
+		}
 	}
 
 	// -------------------------------------------------------------
