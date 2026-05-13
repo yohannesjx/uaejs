@@ -59,6 +59,7 @@ export default function ProductsPage() {
   const [variantCellEdit, setVariantCellEdit] = useState<{ variantId: string; field: "sku" | "price" | "sale_price" | "cost" | "quantity" | "size" | "color" } | null>(null);
   const [hoverInventoryProduct, setHoverInventoryProduct] = useState<string | null>(null);
   const [editingProductStock, setEditingProductStock] = useState<string | null>(null);
+  const [editingProductTitle, setEditingProductTitle] = useState<string | null>(null);
   const pageSize = 25;
 
   const { data, isLoading } = useQuery({
@@ -343,6 +344,22 @@ export default function ProductsPage() {
     }
     queryClient.invalidateQueries({ queryKey: ["products"] });
   };
+  const saveProductTitle = async (row: { product_id: string }, title: string) => {
+    const trimmed = title.trim();
+    if (!trimmed) {
+      toast.error("Product title cannot be empty");
+      return;
+    }
+    try {
+      await api.updateProduct(row.product_id, { title: trimmed });
+      setEditingProductTitle(null);
+      queryClient.invalidateQueries({ queryKey: ["products"] });
+      queryClient.invalidateQueries({ queryKey: ["products-list-expanded-details"] });
+      toast.success("Title updated");
+    } catch {
+      toast.error("Could not update title");
+    }
+  };
   const commitVariantDefaultWarehouseQty = (
     productId: string,
     variantId: string,
@@ -620,21 +637,74 @@ export default function ProductsPage() {
                                   Upload
                                 </span>
                               </button>
-                              <Link
-                                href={`/products/${row.product_id}/edit`}
-                                className="min-w-0 flex-1 truncate font-semibold text-[var(--foreground)] hover:underline"
-                                title={row.name}
-                              >
-                                {row.name}
-                              </Link>
-                              <Link
-                                href={`/products/${row.product_id}/edit`}
-                                className="shrink-0 rounded-md p-1.5 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
-                                title="Edit product"
-                                aria-label="Edit product"
-                              >
-                                <Pencil className="size-3.5 sm:size-4" />
-                              </Link>
+                              {editingProductTitle === row.product_id ? (
+                                <div className="flex min-w-0 flex-1 items-center gap-1">
+                                  <Input
+                                    className="h-7 min-w-0 flex-1 text-sm font-semibold"
+                                    value={rowEditor(row).title}
+                                    onChange={(e) =>
+                                      setEditingRows((prev) => ({
+                                        ...prev,
+                                        [row.product_id]: {
+                                          ...rowEditor(row),
+                                          title: e.target.value,
+                                        },
+                                      }))
+                                    }
+                                    onKeyDown={(e) => {
+                                      if (e.key === "Enter") {
+                                        void saveProductTitle(row, rowEditor(row).title);
+                                      }
+                                      if (e.key === "Escape") {
+                                        setEditingProductTitle(null);
+                                      }
+                                    }}
+                                    autoFocus
+                                  />
+                                  <button
+                                    type="button"
+                                    className="shrink-0 rounded-md p-1 text-emerald-600 hover:bg-emerald-50"
+                                    title="Save title"
+                                    onClick={() => void saveProductTitle(row, rowEditor(row).title)}
+                                  >
+                                    <Check className="size-4" />
+                                  </button>
+                                </div>
+                              ) : (
+                                <>
+                                  <Link
+                                    href={`/products/${row.product_id}/edit`}
+                                    className="min-w-0 flex-1 truncate font-semibold text-[var(--foreground)] hover:underline"
+                                    title={row.name}
+                                  >
+                                    {row.name}
+                                  </Link>
+                                  <button
+                                    type="button"
+                                    className="shrink-0 rounded-md p-1.5 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
+                                    title="Edit title"
+                                    aria-label="Edit title"
+                                    onClick={() => {
+                                      setEditingRows((prev) => {
+                                        const cur = prev[row.product_id];
+                                        const base =
+                                          cur ??
+                                          ({
+                                            title: row.name,
+                                            price: String(row.price),
+                                            stock: String(row.stock),
+                                            sale_price: "",
+                                            cost: row.cost ?? "",
+                                          } satisfies { title: string; price: string; stock: string; sale_price: string; cost: string });
+                                        return { ...prev, [row.product_id]: { ...base, title: row.name } };
+                                      });
+                                      setEditingProductTitle(row.product_id);
+                                    }}
+                                  >
+                                    <Pencil className="size-3.5 sm:size-4" />
+                                  </button>
+                                </>
+                              )}
                             </div>
                           </td>
                           <td className="px-2 py-2 sm:py-2.5">
