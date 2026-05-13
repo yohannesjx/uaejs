@@ -58,6 +58,7 @@ export default function ProductsPage() {
   const [editingCost, setEditingCost] = useState<string | null>(null);
   const [variantCellEdit, setVariantCellEdit] = useState<{ variantId: string; field: "sku" | "price" | "sale_price" | "cost" | "quantity" | "size" | "color" } | null>(null);
   const [hoverInventoryProduct, setHoverInventoryProduct] = useState<string | null>(null);
+  const [editingProductStock, setEditingProductStock] = useState<string | null>(null);
   const pageSize = 25;
 
   const { data, isLoading } = useQuery({
@@ -342,6 +343,64 @@ export default function ProductsPage() {
     }
     queryClient.invalidateQueries({ queryKey: ["products"] });
   };
+  const commitVariantDefaultWarehouseQty = (
+    productId: string,
+    variantId: string,
+    quantityDraft: string,
+  ) => {
+    const v = getVariantById(productId, variantId);
+    const q = parseInt(String(quantityDraft).trim(), 10);
+    const target = isNaN(q) ? 0 : Math.max(0, q);
+    const current =
+      inventoryByVariantDefaultWarehouse.get(variantId) ??
+      Number(String(v?.quantity ?? "").trim() || 0);
+    const delta = target - current;
+    if (delta !== 0 && defaultWarehouse) {
+      adjustInventory.mutate({
+        warehouseId: defaultWarehouse.id,
+        variantId,
+        adjustmentType: delta > 0 ? "increase" : "decrease",
+        quantity: Math.abs(delta),
+      });
+    }
+    setVariantCellEdit(null);
+    queryClient.invalidateQueries({ queryKey: ["inventory-rows-products-page"] });
+    queryClient.invalidateQueries({ queryKey: ["products"] });
+    queryClient.invalidateQueries({ queryKey: ["products-list-expanded-details"] });
+  };
+  const commitProductRowDefaultWarehouseQty = (row: { product_id: string; id: string; stock: number }, draftStock: string) => {
+    if (row.id === row.product_id) {
+      toast.message("Expand the product to adjust stock on each variant.");
+      setEditingProductStock(null);
+      return;
+    }
+    if (!defaultWarehouse) {
+      toast.error("No default warehouse configured.");
+      setEditingProductStock(null);
+      return;
+    }
+    const q = parseInt(String(draftStock).trim(), 10);
+    const target = isNaN(q) ? 0 : Math.max(0, q);
+    const current = inventoryByVariantDefaultWarehouse.get(row.id) ?? row.stock;
+    const delta = target - current;
+    if (delta !== 0) {
+      adjustInventory.mutate({
+        warehouseId: defaultWarehouse.id,
+        variantId: row.id,
+        adjustmentType: delta > 0 ? "increase" : "decrease",
+        quantity: Math.abs(delta),
+      });
+    }
+    setEditingProductStock(null);
+    setEditingRows((prev) => {
+      const cur = prev[row.product_id];
+      if (!cur) return prev;
+      return { ...prev, [row.product_id]: { ...cur, stock: String(target) } };
+    });
+    queryClient.invalidateQueries({ queryKey: ["inventory-rows-products-page"] });
+    queryClient.invalidateQueries({ queryKey: ["products"] });
+    queryClient.invalidateQueries({ queryKey: ["products-list-expanded-details"] });
+  };
   const applyBulkDelete = async () => {
     if (selectedIds.length === 0) return;
     try {
@@ -585,22 +644,92 @@ export default function ProductsPage() {
                             {(() => {
                               const rows = inventoryByProduct.get(row.product_id) ?? [];
                               const totalAvailable = rows.reduce((acc, curr) => acc + curr.available_quantity, 0);
+                              const hasPrimaryVariant = row.id !== row.product_id;
+                              const defaultQty =
+                                hasPrimaryVariant && defaultWarehouse
+                                  ? (inventoryByVariantDefaultWarehouse.get(row.id) ?? row.stock)
+                                  : null;
+                              if (editingProductStock === row.product_id) {
+                                return (
+                                  <div className="flex flex-col gap-0.5">
+                                    <div className="flex items-center gap-1">
+                                      <Input
+                                        type="number"
+                                        min={0}
+                                        className="h-7 w-full min-w-0 max-w-[3.75rem] text-center"
+                                        value={rowEditor(row).stock}
+                                        onChange={(e) =>
+                                          setEditingRows((prev) => ({
+                                            ...prev,
+                                            [row.product_id]: {
+                                              ...rowEditor(row),
+                                              stock: e.target.value,
+                                            },
+                                          }))
+                                        }
+                                        onKeyDown={(e) => {
+                                          if (e.key === "Enter") {
+                                            commitProductRowDefaultWarehouseQty(row, rowEditor(row).stock);
+                                          }
+                                        }}
+                                        autoFocus
+                                      />
+                                      <button
+                                        type="button"
+                                        className="rounded p-1 text-emerald-600 hover:bg-emerald-50"
+                                        onClick={() => commitProductRowDefaultWarehouseQty(row, rowEditor(row).stock)}
+                                      >
+                                        <Check className="size-4" />
+                                      </button>
+                                    </div>
+                                    <span className="text-[9px] leading-tight text-[var(--muted-foreground)]">
+                                      {hasPrimaryVariant ? "Default warehouse · primary variant" : "Add a variant to edit stock here"}
+                                    </span>
+                                  </div>
+                                );
+                              }
                               return (
                                 <div
                                   className="relative"
-                                  onMouseEnter={() => setHoverInventoryProduct(row.product_id)}
+                                  onMouseEnter={() => {
+                                    if (editingProductStock !== row.product_id) {
+                                      setHoverInventoryProduct(row.product_id);
+                                    }
+                                  }}
                                   onMouseLeave={() => setHoverInventoryProduct(null)}
                                 >
-                                  <div className="font-medium tabular-nums text-[var(--foreground)]">{totalAvailable}</div>
+                                  <button
+                                    type="button"
+                                    className="w-full text-left font-medium tabular-nums text-[var(--foreground)] hover:underline"
+                                    onClick={() => {
+                                      if (!hasPrimaryVariant) {
+                                        toast.message("Expand the product to adjust stock on each variant.");
+                                        return;
+                                      }
+                                      const cur = defaultQty ?? row.stock;
+                                      setEditingRows((prev) => ({
+                                        ...prev,
+                                        [row.product_id]: { ...rowEditor(row), stock: String(cur) },
+                                      }));
+                                      setEditingProductStock(row.product_id);
+                                    }}
+                                  >
+                                    {totalAvailable}
+                                  </button>
                                   {hoverInventoryProduct === row.product_id && rows.length > 0 && (
-                                    <div className="absolute left-0 top-10 z-20 min-w-[220px] rounded-lg border border-[var(--border)] bg-[var(--panel)] p-2 shadow-lg">
+                                    <div className="absolute left-0 top-8 z-20 min-w-[200px] max-w-[min(100vw-2rem,280px)] rounded-lg border border-[var(--border)] bg-[var(--panel)] p-2 text-xs shadow-lg">
+                                      {hasPrimaryVariant && defaultQty != null && (
+                                        <div className="mb-1.5 border-b border-[var(--border)] pb-1.5 text-[10px] text-[var(--muted-foreground)]">
+                                          Click total to edit default warehouse ({defaultQty}) · all locations below
+                                        </div>
+                                      )}
                                       {Object.entries(rows.reduce<Record<string, number>>((acc, r) => {
                                         acc[r.warehouse] = (acc[r.warehouse] ?? 0) + r.available_quantity;
                                         return acc;
                                       }, {})).map(([warehouse, qty]) => (
-                                        <div key={warehouse} className="flex items-center justify-between gap-3 text-xs">
-                                          <span>{warehouse}</span>
-                                          <span className="font-medium">{qty}</span>
+                                        <div key={warehouse} className="flex items-center justify-between gap-2">
+                                          <span className="truncate">{warehouse}</span>
+                                          <span className="shrink-0 font-medium tabular-nums">{qty}</span>
                                         </div>
                                       ))}
                                     </div>
@@ -878,9 +1007,62 @@ export default function ProductsPage() {
                                 <span className="font-mono text-xs text-[var(--muted-foreground)]">{v.sku || "—"}</span>
                               </td>
                               <td className="px-2 py-2 sm:py-2.5">
-                                <span className="font-medium tabular-nums text-[var(--foreground)]">
-                                  {inventoryByVariantDefaultWarehouse.get(v.id) ?? Number(v.quantity || 0)}
-                                </span>
+                                {variantCellEdit?.variantId === v.id && variantCellEdit.field === "quantity" ? (
+                                  <div className="flex flex-col gap-0.5">
+                                    <div className="flex items-center gap-1">
+                                      <Input
+                                        className="h-7 w-full min-w-0 max-w-[3.75rem] text-center"
+                                        type="number"
+                                        min={0}
+                                        value={v.quantity ?? ""}
+                                        onChange={(e) =>
+                                          setVariantEdits((prev) => {
+                                            const next = [...getVariants(row.product_id)];
+                                            const idx = next.findIndex((x) => x.id === v.id);
+                                            if (idx >= 0) next[idx] = { ...next[idx], quantity: e.target.value };
+                                            return { ...prev, [row.product_id]: next };
+                                          })
+                                        }
+                                        onKeyDown={(e) => {
+                                          if (e.key === "Enter") {
+                                            const latest = getVariantById(row.product_id, v.id) || v;
+                                            commitVariantDefaultWarehouseQty(
+                                              row.product_id,
+                                              v.id,
+                                              latest.quantity ?? "",
+                                            );
+                                          }
+                                        }}
+                                        autoFocus
+                                      />
+                                      <button
+                                        type="button"
+                                        className="rounded p-1 text-emerald-600 hover:bg-emerald-50"
+                                        onClick={() => {
+                                          const latest = getVariantById(row.product_id, v.id) || v;
+                                          commitVariantDefaultWarehouseQty(
+                                            row.product_id,
+                                            v.id,
+                                            latest.quantity ?? "",
+                                          );
+                                        }}
+                                      >
+                                        <Check className="size-4" />
+                                      </button>
+                                    </div>
+                                    <span className="text-[9px] leading-tight text-[var(--muted-foreground)]" title="Default warehouse stock">
+                                      Def. WH
+                                    </span>
+                                  </div>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    className="font-medium tabular-nums text-[var(--foreground)] hover:underline"
+                                    onClick={() => setVariantCellEdit({ variantId: v.id, field: "quantity" })}
+                                  >
+                                    {inventoryByVariantDefaultWarehouse.get(v.id) ?? Number(v.quantity || 0)}
+                                  </button>
+                                )}
                               </td>
                               <td className="px-2 py-2 sm:py-2.5">
                                 {variantCellEdit?.variantId === v.id && variantCellEdit.field === "cost" ? (
@@ -974,57 +1156,7 @@ export default function ProductsPage() {
                                   </button>
                                 )}
                               </td>
-                              <td className="px-2 py-2 sm:py-2.5 text-center">
-                                {variantCellEdit?.variantId === v.id && variantCellEdit.field === "quantity" ? (
-                                  <div className="flex flex-col items-center justify-center gap-1">
-                                    <Input
-                                      className="h-7 w-full min-w-0 max-w-[3.5rem] text-center"
-                                      type="number"
-                                      value={v.quantity ?? ""}
-                                      onChange={(e) =>
-                                        setVariantEdits((prev) => {
-                                          const next = [...getVariants(row.product_id)];
-                                          const idx = next.findIndex((x) => x.id === v.id);
-                                          if (idx >= 0) next[idx] = { ...next[idx], quantity: e.target.value };
-                                          return { ...prev, [row.product_id]: next };
-                                        })
-                                      }
-                                      onKeyDown={(e) => {
-                                        if (e.key === "Enter") {
-                                          const latest = getVariantById(row.product_id, v.id) || v;
-                                          const q = parseInt(latest.quantity || "0", 10);
-                                          const target = isNaN(q) ? 0 : q;
-                                          const current = inventoryByVariantDefaultWarehouse.get(v.id) ?? Number(v.quantity || 0);
-                                          const delta = target - current;
-                                          if (delta !== 0 && defaultWarehouse) {
-                                            adjustInventory.mutate({
-                                              warehouseId: defaultWarehouse.id,
-                                              variantId: v.id,
-                                              adjustmentType: delta > 0 ? "increase" : "decrease",
-                                              quantity: Math.abs(delta),
-                                            });
-                                          }
-                                          setVariantCellEdit(null);
-                                        }
-                                      }}
-                                      autoFocus
-                                    />
-                                    <span className="text-[9px] leading-tight text-[var(--muted-foreground)]" title="Adjusts default warehouse stock">
-                                      Def. WH
-                                    </span>
-                                  </div>
-                                ) : (
-                                  <button
-                                    type="button"
-                                    onClick={() => setVariantCellEdit({ variantId: v.id, field: "quantity" })}
-                                    className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-bold shadow-sm transition-colors hover:ring-2 hover:ring-[var(--ring)] hover:ring-offset-1 ${v.quantity && parseInt(v.quantity) > 0 ? "bg-black text-white" : "bg-slate-200 text-slate-800"}`}
-                                  >
-                                    {(inventoryByVariantDefaultWarehouse.get(v.id) ?? Number(v.quantity || 0)) > 0
-                                      ? `${inventoryByVariantDefaultWarehouse.get(v.id) ?? Number(v.quantity || 0)} available`
-                                      : "Out of stock"}
-                                  </button>
-                                )}
-                              </td>
+                              <td className="px-2 py-2 sm:py-2.5 text-center text-xs text-[var(--muted-foreground)]">—</td>
                               <td className="px-2 py-2 sm:py-2.5 text-right">
                                 <button
                                   className="rounded p-1 text-[var(--muted-foreground)] hover:bg-red-50 hover:text-red-600"
