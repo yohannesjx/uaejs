@@ -60,7 +60,7 @@
 
     <!-- Bottom Section -->
     <div class="pt-8 flex flex-col md:flex-row items-center justify-between gap-6">
-      <a href="/" class="text-lg font-black uppercase tracking-[0.25em]">NOIR DROP</a>
+      <a href="/" class="text-lg font-black uppercase tracking-[0.25em]">JS FASHION</a>
       
       <div class="flex items-center gap-6">
         <a href="https://instagram.com" class="text-zinc-400 hover:text-white transition-colors"><Instagram size={18} /></a>
@@ -71,10 +71,10 @@
 
       <div class="flex flex-col md:flex-row items-center gap-4 text-[10px] uppercase tracking-widest text-zinc-600">
         <button class="hover:text-zinc-300 transition-colors">United Arab Emirates (AED)</button>
-        <span class="hidden md:inline">&copy; {new Date().getFullYear()} NOIR DROP</span>
+        <span class="hidden md:inline">&copy; {new Date().getFullYear()} JS FASHION</span>
       </div>
       <!-- Mobile Copyright -->
-      <span class="md:hidden text-[10px] uppercase tracking-widest text-zinc-600">&copy; {new Date().getFullYear()} NOIR DROP</span>
+      <span class="md:hidden text-[10px] uppercase tracking-widest text-zinc-600">&copy; {new Date().getFullYear()} JS FASHION</span>
     </div>
   </div>
 </footer>

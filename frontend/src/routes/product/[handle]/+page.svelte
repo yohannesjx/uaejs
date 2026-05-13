@@ -72,7 +72,7 @@
   });
 
   const urgency = $derived(product && product.inventory !== null && product.inventory <= 5 ? `Only ${product.inventory} left` : "");
-  const pageTitle = $derived(product ? `${product.title} | Noir Drop` : "Product | Noir Drop");
+  const pageTitle = $derived(product ? `${product.title} | JS FASHION` : "Product | JS FASHION");
   const pageDescription = $derived(product?.description || "Product details and related looks.");
   const availableColorSwatches = $derived(product ? product.colorSwatches : []);
 

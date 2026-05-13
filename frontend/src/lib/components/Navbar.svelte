@@ -82,7 +82,7 @@
       
       <!-- Center: Logo -->
       <div class="flex-1 text-center">
-        <a href="/" class="text-base md:text-lg font-black uppercase tracking-[0.25em] text-white">NOIR DROP</a>
+        <a href="/" class="text-base md:text-lg font-black uppercase tracking-[0.25em] text-white">JS FASHION</a>
       </div>
       
       <!-- Right: Search & Cart -->

@@ -95,6 +95,25 @@ export function publicUploadUrl(stored: string | null | undefined): string {
 	return `${getApiBaseUrl()}${raw.slice(idx)}`;
 }
 
+/** Path under storage/uploads (no leading slash), for /uploads/thumb. */
+export function uploadsRelativePath(stored: string | null | undefined): string {
+	const u = publicUploadUrl(stored);
+	const marker = "/uploads/";
+	const i = u.indexOf(marker);
+	if (i === -1) return "";
+	const rest = u.slice(i + marker.length).replace(/^\/+/, "");
+	const noQuery = rest.split("?")[0] ?? "";
+	return noQuery;
+}
+
+/** Downscaled JPEG from GET /uploads/thumb — use in admin grids instead of full-size uploads. */
+export function listThumbUrl(stored: string | null | undefined, maxEdge = 160): string {
+	const rel = uploadsRelativePath(stored);
+	if (!rel) return "";
+	const base = getApiBaseUrl();
+	return `${base}/uploads/thumb?path=${encodeURIComponent(rel)}&w=${String(maxEdge)}`;
+}
+
 export class ApiError extends Error {
   status: number;
   payload?: ApiErrorPayload | string;

@@ -88,6 +88,8 @@ func New(
 	r.Handle("/metrics", promhttp.HandlerFor(reg, promhttp.HandlerOpts{Registry: reg}))
 
 	// ── Serve Local Uploads (for dev) ─────────────────────────────────────────
+	// Downscaled JPEGs for admin grids; register before the /uploads/* wildcard.
+	r.Get("/uploads/thumb", serveUploadThumbnail(log))
 	r.Get("/uploads/*", http.StripPrefix("/uploads/", http.FileServer(http.Dir("./storage/uploads"))).ServeHTTP)
 
 	// ── API v1 ───────────────────────────────────────────────────────────────

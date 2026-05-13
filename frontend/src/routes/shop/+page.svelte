@@ -50,7 +50,7 @@
 </script>
 
 <svelte:head>
-  <title>Shop | Noir Drop</title>
+  <title>Shop | JS FASHION</title>
   <meta name="description" content="Shop all products with size, price, color and category filters." />
 </svelte:head>
 

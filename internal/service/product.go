@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"regexp"
@@ -1071,8 +1073,10 @@ func (s *ProductService) DuplicateProduct(ctx context.Context, productID uuid.UU
 	}
 
 	for _, v := range srcVariants {
-		// Generate entirely unique SKU adhering to the 8-digit suffix rule
-		newSku := fmt.Sprintf("SKU-%s", strings.ToUpper(uuid.NewString()[:8]))
+		newSku, err := generateUniqueJSVariantSKU(ctx, tx)
+		if err != nil {
+			return nil, fmt.Errorf("DuplicateProduct sku: %w", err)
+		}
 
 		nv := &domain.Variant{
 			ID:        uuid.New(),
@@ -1110,6 +1114,30 @@ func (s *ProductService) DuplicateProduct(ctx context.Context, productID uuid.UU
 // =============================================================================
 // Helpers
 // =============================================================================
+
+func randomJSVariant8Digit() string {
+	var b [4]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return fmt.Sprintf("JS-%08d", (time.Now().UnixNano()%90000000)+10000000)
+	}
+	n := binary.BigEndian.Uint32(b[:])
+	n = n%90000000 + 10000000
+	return fmt.Sprintf("JS-%d", n)
+}
+
+func generateUniqueJSVariantSKU(ctx context.Context, tx pgx.Tx) (string, error) {
+	for range 80 {
+		sku := randomJSVariant8Digit()
+		var exists bool
+		if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM variants WHERE sku = $1)`, sku).Scan(&exists); err != nil {
+			return "", err
+		}
+		if !exists {
+			return sku, nil
+		}
+	}
+	return "", fmt.Errorf("could not allocate unique JS variant SKU")
+}
 
 func normalizeVariantUnitCost(cost *string) (*string, error) {
 	if cost == nil {

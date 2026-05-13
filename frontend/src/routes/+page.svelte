@@ -56,7 +56,7 @@
 </script>
 
 <svelte:head>
-  <title>Home | Noir Drop</title>
+  <title>Home | JS FASHION</title>
   <meta name="description" content="Latest drops, trending products, and curated collections." />
 </svelte:head>
 
@@ -71,7 +71,7 @@
     <div class="absolute inset-0 bg-black/20"></div>
     <div class="absolute inset-0 flex flex-col justify-end p-6 md:p-10">
       <p class="text-xs uppercase tracking-[0.24em] text-accent">Drop Live</p>
-      <h1 class="mt-2 text-3xl font-black uppercase text-white md:text-6xl">Noir Season Collection</h1>
+      <h1 class="mt-2 text-3xl font-black uppercase text-white md:text-6xl">JS FASHION Season Collection</h1>
       <p class="mt-3 text-sm text-white">Ends in {hh}:{mm}:{ss}</p>
     </div>
   </div>

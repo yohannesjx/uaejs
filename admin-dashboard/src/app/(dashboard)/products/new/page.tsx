@@ -75,13 +75,11 @@ const initialFormValues = {
 export default function NewProductPage() {
     const router = useRouter();
 
-    const [draftId, setDraftId] = useState<string | null>(null);
     const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
     const [mediaOpen, setMediaOpen] = useState(false);
 
     // State for things that are complex to hook into react-hook-form natively initially
     const [media, setMedia] = useState<MediaAsset[]>([]);
-    const isFirstMount = useRef(true);
 
     const methods = useForm<ProductFormValues>({
         defaultValues: initialFormValues,
@@ -150,50 +148,7 @@ export default function NewProductPage() {
         if (changed) setValue("variants", next, { shouldDirty: true });
     }, [productMediaKey, variantsLen, media, getValues, setValue]);
 
-    // 1. Initialize empty draft on mount
-    useEffect(() => {
-        if (!isFirstMount.current) return;
-        isFirstMount.current = false;
-
-        api.createDraftProduct()
-            .then((res) => setDraftId(res.id))
-            .catch((err) => {
-                toast.error("Failed to initialize product auto-save draft");
-                console.error(err);
-            });
-    }, []);
-
-    // 2. Auto-save Patch requests (debounced 800ms)
-    useEffect(() => {
-        if (!draftId || !isDirty) return;
-
-        const handle = setTimeout(async () => {
-            setSaveStatus("saving");
-            try {
-                // Map the form layout into the structured Patch Payload backing only core attributes currently mapped in the backend patch domain
-                const patchPayload: Record<string, unknown> = {
-                    name: formVals.title || undefined,
-                    description: formVals.description || undefined,
-                    status: "draft",
-                    category_id: formVals.categoryId || undefined,
-                    category: selectedCategoryName || undefined,
-                    track_inventory: Boolean(formVals.trackInventory),
-                    warehouse_id: formVals.inventoryWarehouseId || undefined,
-                    // tags: formVals.tags,
-                };
-
-                await api.updateProduct(draftId, patchPayload);
-                setSaveStatus("saved");
-            } catch (err) {
-                console.error("Auto-save failed", err);
-                setSaveStatus("error");
-            }
-        }, 800);
-
-        return () => clearTimeout(handle);
-    }, [formVals, draftId, isDirty]);
-
-    // 3. Beforeunload blocker
+    // Beforeunload blocker
     useEffect(() => {
         const onBeforeUnload = (e: BeforeUnloadEvent) => {
             if (saveStatus === "saving" || hasUnsavedChanges) {
@@ -232,7 +187,7 @@ export default function NewProductPage() {
         return () => document.removeEventListener("click", onDocumentClick, true);
     }, [hasUnsavedChanges]);
 
-    // 4. Manual Publish Handlers
+    // Manual publish / save draft (single createProductV2 call — no bootstrap draft row).
     const handleSave = useCallback(async (forcedStatus?: ProductStatus) => {
         const vals = getValues();
         if (!vals.title?.trim()) {
@@ -309,14 +264,6 @@ export default function NewProductPage() {
                 variants,
             });
 
-            // Publish creates the canonical product record; remove bootstrap draft
-            if (draftId) {
-                try {
-                    await api.deleteProduct(draftId);
-                } catch {
-                    // Non-fatal cleanup failure; published product already exists
-                }
-            }
             toast.success("Product Saved successfully!");
             setSaveStatus("saved");
             setMediaDirty(false);
@@ -331,7 +278,7 @@ export default function NewProductPage() {
             }
             setSaveStatus("error");
         }
-    }, [draftId, getValues, media, router, selectedCategoryName]);
+    }, [getValues, media, router, selectedCategoryName]);
 
     const handleDiscard = useCallback(() => {
         reset({ ...initialFormValues, sku: generateSku() });

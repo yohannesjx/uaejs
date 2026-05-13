@@ -13,7 +13,7 @@ import {
   Input,
 } from "@/components/ui/primitives";
 import { MediaLibraryModal } from "@/components/media/media-library-modal";
-import { api, publicUploadUrl } from "@/lib/api-client";
+import { api, listThumbUrl, publicUploadUrl } from "@/lib/api-client";
 import { formatAmountPlain } from "@/lib/utils";
 import type { InventoryListItem, MediaAsset, ProductCategory } from "@/types/api";
 
@@ -484,7 +484,7 @@ export default function ProductsPage() {
                                 {row.thumbnail ? (
                                   <>
                                     <img
-                                      src={publicUploadUrl(row.thumbnail)}
+                                      src={listThumbUrl(row.thumbnail, 160)}
                                       alt={row.name}
                                       className="size-10 rounded-md border border-[var(--border)] object-cover bg-[var(--muted)]"
                                       onMouseEnter={() => setHoverThumb(publicUploadUrl(row.thumbnail) || null)}
@@ -647,7 +647,7 @@ export default function ProductsPage() {
                                         }}
                                       >
                                         <img
-                                          src={publicUploadUrl(v.image_url)}
+                                          src={listThumbUrl(v.image_url, 128)}
                                           alt={v.sku}
                                           className="size-8 rounded-md border border-[var(--border)] object-cover bg-[var(--muted)]"
                                           onMouseEnter={() => setHoverThumb(publicUploadUrl(v.image_url) || null)}

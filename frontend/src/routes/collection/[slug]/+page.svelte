@@ -41,7 +41,7 @@
 </script>
 
 <svelte:head>
-  <title>{notFound ? "Collection" : collectionMeta?.title || slug} | Noir Drop</title>
+  <title>{notFound ? "Collection" : collectionMeta?.title || slug} | JS FASHION</title>
   <meta name="description" content={collectionMeta?.description || "Shop products in this collection."} />
 </svelte:head>
 

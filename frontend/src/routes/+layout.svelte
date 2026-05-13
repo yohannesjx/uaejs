@@ -13,10 +13,10 @@
 </script>
 
 <svelte:head>
-  <title>Noir Drop - Luxury Streetwear</title>
-  <meta name="description" content="High-conversion luxury streetwear storefront." />
-  <meta property="og:title" content="Noir Drop" />
-  <meta property="og:description" content="Black, white, pink streetwear shopping experience." />
+  <title>JS FASHION - Luxury Streetwear</title>
+  <meta name="description" content="JS FASHION — luxury streetwear storefront." />
+  <meta property="og:title" content="JS FASHION" />
+  <meta property="og:description" content="Luxury streetwear shopping — JS FASHION." />
 </svelte:head>
 
 <div class="min-h-screen bg-bg text-fg flex flex-col">

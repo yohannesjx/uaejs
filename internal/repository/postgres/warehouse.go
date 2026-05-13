@@ -324,7 +324,7 @@ func (r *WarehouseRepository) ListInventoryRows(
 	if lowStockOnly {
 		query += " AND ws.qty_available <= GREATEST(ws.reorder_point, 5)"
 	}
-	query += " ORDER BY p.name ASC, v.sku ASC, w.name ASC"
+	query += " ORDER BY p.created_at DESC, p.id ASC, v.sku ASC, w.name ASC"
 
 	rows, err := r.pool.Query(ctx, query, args...)
 	if err != nil {

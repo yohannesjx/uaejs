@@ -3,7 +3,7 @@
 import { Fragment, useCallback, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { BarChart2, ArrowRightLeft, ChevronDown, ChevronRight } from "lucide-react";
-import { api, publicUploadUrl } from "@/lib/api-client";
+import { api, listThumbUrl } from "@/lib/api-client";
 import { PageHeader } from "@/components/dashboard-blocks";
 import Link from "next/link";
 import { Button, Card, CardContent, Input, Label } from "@/components/ui/primitives";
@@ -183,6 +183,13 @@ export default function ProductsInventoryPage() {
         for (const p of productsData?.items ?? []) map.set(p.product_id, p.thumbnail);
         return map;
     }, [productsData?.items]);
+    const productCreatedAtByID = useMemo(() => {
+        const m = new Map<string, string>();
+        for (const p of productsData?.items ?? []) {
+            if (p.created_at) m.set(p.product_id, String(p.created_at));
+        }
+        return m;
+    }, [productsData?.items]);
     const groupedProducts = useMemo(() => {
         const map = new Map<string, typeof rows>();
         for (const row of rows) {
@@ -190,7 +197,7 @@ export default function ProductsInventoryPage() {
             list.push(row);
             map.set(row.product_id, list);
         }
-        return Array.from(map.entries()).map(([productID, productRows]) => {
+        const list = Array.from(map.entries()).map(([productID, productRows]) => {
             const first = productRows[0];
             const totalAvailable = productRows.reduce((acc, curr) => acc + curr.available_quantity, 0);
             const totalStockValueAtCost = productRows.reduce(
@@ -259,7 +266,15 @@ export default function ProductsInventoryPage() {
                 ).map(([, v]) => v),
             };
         });
-    }, [rows]);
+        list.sort((a, b) => {
+            const ta = productCreatedAtByID.get(a.productID) ?? "";
+            const tb = productCreatedAtByID.get(b.productID) ?? "";
+            const c = tb.localeCompare(ta);
+            if (c !== 0) return c;
+            return (a.productName || "").localeCompare(b.productName || "");
+        });
+        return list;
+    }, [rows, productCreatedAtByID]);
 
     return (
         <div className="space-y-6">
@@ -432,7 +447,7 @@ export default function ProductsInventoryPage() {
                                                         <div className="flex items-center gap-2">
                                                             {productThumbByID.get(group.productID) ? (
                                                                 // eslint-disable-next-line @next/next/no-img-element
-                                                                <img src={publicUploadUrl(productThumbByID.get(group.productID) || "")} alt={group.productName} className="h-9 w-9 rounded-md object-cover" />
+                                                                <img src={listThumbUrl(productThumbByID.get(group.productID) || "", 160)} alt={group.productName} className="h-9 w-9 rounded-md object-cover" />
                                                             ) : (
                                                                 <div className="h-9 w-9 rounded-md bg-[var(--muted)]" />
                                                             )}

@@ -3,7 +3,7 @@
 </script>
 
 <svelte:head>
-  <title>Error | Noir Drop</title>
+  <title>Error | JS FASHION</title>
 </svelte:head>
 
 <section class="mx-auto max-w-xl rounded-xl border border-zinc-800 bg-zinc-950 p-6 text-center">
